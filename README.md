@@ -171,4 +171,18 @@ python gallery_server.py --port 7825
 - **Three models scored inline on every card** — V8pas80-v2 (production),
   V11s80 (candidate), V6 (legacy baseline). All three share the same SigLIP labels.
 - **Dynamic per-model thresholds** (V8 ≥ 0.30, V11 ≥ 0.30, V6 ≥ 0.80) in a collapsible bar.
-- **Filter by selected model and outcome** (TP / TN / FP / 
+- **Filter by selected model and outcome** (TP / TN / FP / FN) — instantly find e.g. all
+  V8 false-positives on adult.
+- **Pipeline verdict badge** (`ok` / `underage`) — driven by currently-selected model at
+  current threshold, recomputes on the fly.
+- **Per-model breakdown panel** — child / teen / adult coverage with absolute-threshold
+  colour indicators and best-in-row markers.
+- **Hotkeys** on hover: `1` = child, `2` = teen, `3` = adult.
+
+## Data model
+
+`grafana_pool` (SQLite, `gallery.db`):
+
+```
+id, thumb_url, local_path, prompt, label, label_source, label_confirmed,
+lab
