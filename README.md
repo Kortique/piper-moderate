@@ -197,4 +197,13 @@ Only confirmed records participate in training.
 
 ## Tag naming convention
 
-- `{category}_{description}` — positive detection tag (`underage_kneeling_teen_girl`
+- `{category}_{description}` — positive detection tag (`underage_kneeling_teen_girl`)
+- `no_{category}_{description}` — counter-tag suppressing false positives
+  (`no_underage_youthful_adult_face`)
+
+**`:x20` / `:x5` multiplier suffixes were retired** in Sprint 2025-11 (Path A) —
+multipliers caused systematic false positives on adult POV shots
+(e.g. `man_with_young_girl:x20` firing on size-contrast adult-only scenes).
+The LGBM scorer now sees raw cosine scores without inflation.
+
+##
