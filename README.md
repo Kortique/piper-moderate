@@ -110,3 +110,65 @@ Copy `.env.example` to `.env` and fill in your credentials.
 |-----|---------|
 | `PIPER_TOKEN` | all `deploy_*` / `run_*` scripts (Piper API auth) |
 | `PIPER_PROJECT` | default project ID for moderation runs |
+| `OPENROUTER_API_KEY` | `analyze_failed.py`, `grok_validate_fps.py` (vision LLM analysis) |
+| `GRAFANA_USER`, `GRAFANA_PASSWORD` | `export_disagree.py` (Grafana login) |
+| `GRAFANA_SESSION` | auto-refreshed by `grafana_login.py` |
+| `EXPORT_WATCH_DIR` | folder where mod.artworks.ai exports land |
+| `LS_TOKEN` (optional) | Label Studio API token (refresh token for JWT auth) |
+
+## Common workflows
+
+### Re-train V8pas80-v2 with new hard-negatives
+
+```bash
+# 1. Identify new FP candidates from gallery and run them through Grok validation
+python scripts/grok_validate_fps.py --chunk 100
+
+# 2. Re-train (uses bci_taxonomy.py for aggregates, hard-neg pool weight ×20)
+python scripts/train_v8pas80_v2.py
+
+# 3. Sanity-check regression gates on LS holdout
+python scripts/bench_v8pas80_v2.py
+
+# 4. Export JS for Piper and deploy
+python scripts/export_v8pas80_v2_js.py
+python scripts/deploy_v8pas80_v2.py
+```
+
+Rollback: `python scripts/rollback_piper.py d2911d10bb <previous_revision>`
+
+### Cross-validate against Tom's K=30 dataset
+
+```bash
+# 1. Pull dataset from Label Studio (project 5)
+# - dataset already in data/k30_ls_export_full.json
+
+# 2. Run our pipeline against his 6,675 images
+python scripts/run_k30_dataset.py --chunk 80 --workers 15
+# (resumable, appends to data/k30_ours.jsonl)
+
+# 3. Generate comparison reports
+python scripts/compare_k30_vs_ours.py     # binary head-to-head
+python scripts/compare_k30_3class.py      # 3-class child / teen / adult breakdown
+```
+
+Outputs `data/k30_vs_v8pas80_v2_report.json`, `data/k30_3class_report.json` and a sample
+disagreement list at `data/k30_vs_v8pas80_v2_disagreements.json`.
+
+### Disagree-image moderation loop
+
+```bash
+# 1. Fetch latest disagree images from Grafana, auto-moderate via Piper
+python scripts/export_disagree.py
+
+# 2. Open the gallery to review and confirm labels
+python gallery_server.py            # http://localhost:7823
+python gallery_server.py --port 7825
+```
+
+### Gallery features
+
+- **Three models scored inline on every card** — V8pas80-v2 (production),
+  V11s80 (candidate), V6 (legacy baseline). All three share the same SigLIP labels.
+- **Dynamic per-model thresholds** (V8 ≥ 0.30, V11 ≥ 0.30, V6 ≥ 0.80) in a collapsible bar.
+- **Filter by selected model and outcome** (TP / TN / FP / 
