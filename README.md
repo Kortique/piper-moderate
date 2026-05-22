@@ -1,313 +1,226 @@
 # piper-moderate
 
-Automated content moderation pipeline for SigLIP-2 tag tuning and disagree image analysis.
+Underage-content moderation pipeline built on top of SigLIP-2 image-text classifier + LightGBM
+gradient-boosting scorer. Includes training scripts, gallery for live model comparison,
+and cross-validation tooling against external benchmarks.
 
-Integrates with:
-- **Piper** — image classification pipeline (SigLIP-2 + Qwen3-VL)
-- **Grafana / ClickHouse** — disagree review stats (`stat.artworks.ai`)
-- **mod.artworks.ai** — test result viewer & exporter
-- **OpenRouter / Grok** — vision LLM for failed image analysis (tag suggestions only)
-
----
+**Current production model:** `V8pas80-v2` — deployed in Piper project `d2911d10bb`.
 
 ## How it works
 
-### Main tag-tuning workflow
-
 ```
-2. mod.artworks.ai   →  manually click Refresh + Export to download JSON
-3. analyze_failed.py →  sends failed images to Grok, gets tag suggestions
-4. update_tags.py    →  reviews & applies suggestions to data/tags.json
-5. Repeat from step 1 to verify improvements
+Image  →  SigLIP-2 (180 underage tags, 1 batch)  →  LGBM (80 features + 4 BCI aggregates)  →  threshold 0.30  →  block / pass
 ```
 
-### Disagree image analysis workflow
+The LGBM classifier learns from per-image SigLIP scores plus three semantic aggregates
+(Body / Context / Interaction) that disambiguate "real child in frame" from
+"child-adjacent context without an actual child" (cosplay, anime classroom, etc).
 
-Images that users marked "disagree" were previously **passed** by the old Siglip2 (without LGBM Underage). This workflow measures how much better the new pipeline catches them.
+On full LS + Grafana set (3,120 items):
+
+| Stage | child recall | teen recall | adult FPR |
+|---|---|---|---|
+| Pure SigLIP (rule-based) | 96.9% | 79.1% | 46.6% |
+| + LGBM (V6) | ≈96% | ≈78% | ≈22% |
+| + BCI feature split (V8pa) | ≈98% | ≈88% | ≈13% |
+| **+ Hard-neg ×20 (V8pas80-v2)** | **97.7%** | **86.2%** | **6.1%** |
+
+Cross-validation against [Tom Renneberg's K=30 (BCI)](https://gitlab.artworks.ai/realistic-ai/fullstack/-/issues/3626) model
+confirms the architecture: V8pas80-v2 catches +9.7pp more children and 4× more teens
+on his dataset, K=30 wins on adult FPR by virtue of targeting only `≤14`.
+
+## Repository layout
 
 ```
-1. export_disagree.py   →  fetch latest disagree reviews from Grafana, download images
-                            auto-calls moderate_disagree.py on newly added images
-2. moderate_disagree.py →  run Piper pipeline d2911d10bb (Siglip2 + Qwen3-VL)
-                            stores age label suggestion + siglip2 result
-3. gallery_server.py    →  open http://localhost:7823 to review, confirm/correct labels
-4. run_disagree_pipeline.py →  (optional) re-run labeled images through a specific pipeline
+piper-moderate/
+├── gallery_server.py             # live model-comparison gallery (V8 / V11 / V6 inline)
+├── simulator/index.html          # standalone SigLIP threshold tuner
+├── config.yaml
+│
+├── scripts/
+│   ├── bci_taxonomy.py           # Body / Context / Interaction label sets
+│   ├── train_v8pa.py             # V8pa: V7pa + BCI + hard-neg ×20
+│   ├── train_v8pas80_v2.py       # current production model
+│   ├── train_v11.py              # V11 candidate (with no_underage_ features)
+│   ├── train_slim.py             # feature pruning (top-N by gain + always-keep 4 BCI)
+│   ├── train_pathA.py            # V7pa / V10pa — :x multipliers stripped
+│   │
+│   ├── export_v8pas80_v2_js.py   # build JS LGBM evaluate-script for Piper
+│   ├── export_v8pa_js.py
+│   ├── export_v11_js.py
+│   │
+│   ├── deploy_v8pas80_v2.py      # PATCH Piper d2911d10bb with new model
+│   ├── deploy_phase4.py
+│   ├── rollback_piper.py
+│   │
+│   ├── bench_v8pas80_v2.py       # regression gates on LS holdout
+│   ├── grok_validate_fps.py      # Grok-4.3 validation of FP candidates
+│   ├── run_k30_dataset.py        # run Tom's 6,675 dataset through d2911d10bb
+│   ├── compare_k30_vs_ours.py    # binary head-to-head
+│   ├── compare_k30_3class.py     # 3-class breakdown by child / teen / adult
+│   │
+│   ├── export_disagree.py        # fetch disagree images from Grafana
+│   ├── moderate_disagree.py      # auto-moderate via Piper
+│   ├── run_disagree_pipeline.py
+│   ├── analyze_failed.py         # Grok-based tag suggestion for FP/FN
+│   └── update_tags.py            # apply tag suggestions to data/tags.json
+│
+├── data/
+│   ├── lgbm_underage_v8pas80_v2.txt        # trained model (binary)
+│   ├── lgbm_v8pas80_v2_features.json       # feature list
+│   ├── lgbm_v8pas80_v2_meta.json           # training metadata
+│   ├── lgbm_evaluate_v8pas80_v2.js         # ready-to-deploy Piper LGBM node
+│   ├── lgbm_underage_v11s80.txt            # V11 candidate
+│   ├── d2911d10bb_slim_labels.json         # 180-label slim taxonomy
+│   ├── k30_ls_export_full.json             # Tom's dataset exported
+│   ├── k30_ours.jsonl                      # our pipeline applied to it
+│   ├── k30_3class_report.json              # 3-class comparison
+│   ├── k30_vs_v8pas80_v2_report.json
+│   ├── v8pas80_top100_fps.json             # FP candidates
+│   ├── v8pas80_fps_grok_confirmed.json     # 67 Grok-validated confirmed adults
+│   ├── v8pas80_v2_full_thr_sweep.json      # threshold sweep on full dataset
+│   └── tags.json                           # SigLIP tag library (versioned)
+│
+└── docs/
+    └── workflow.md
 ```
-
----
 
 ## Setup
 
-### 1. Clone the repo
+### Clone + install
 
 ```bash
 git clone https://github.com/Kortique/piper-moderate.git
 cd piper-moderate
-```
 
-### 2. Install dependencies
-
-```bash
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# Mac/Linux:
-source .venv/bin/activate
+# Windows:   .venv\Scripts\activate
+# Mac/Linux: source .venv/bin/activate
 
 pip install -r requirements.txt
 ```
 
-### 3. Configure secrets
+### Configure secrets
+
+Copy `.env.example` to `.env` and fill in your credentials.
+
+**Required keys:**
+
+| Key | Used by |
+|-----|---------|
+| `PIPER_TOKEN` | all `deploy_*` / `run_*` scripts (Piper API auth) |
+| `PIPER_PROJECT` | default project ID for moderation runs |
+| `OPENROUTER_API_KEY` | `analyze_failed.py`, `grok_validate_fps.py` (vision LLM analysis) |
+| `GRAFANA_USER`, `GRAFANA_PASSWORD` | `export_disagree.py` (Grafana login) |
+| `GRAFANA_SESSION` | auto-refreshed by `grafana_login.py` |
+| `EXPORT_WATCH_DIR` | folder where mod.artworks.ai exports land |
+| `LS_TOKEN` (optional) | Label Studio API token (refresh token for JWT auth) |
+
+## Common workflows
+
+### Re-train V8pas80-v2 with new hard-negatives
 
 ```bash
-cp .env.example .env
-# Edit .env with your credentials (never commit .env!)
+# 1. Identify new FP candidates from gallery and run them through Grok validation
+python scripts/grok_validate_fps.py --chunk 100
+
+# 2. Re-train (uses bci_taxonomy.py for aggregates, hard-neg pool weight ×20)
+python scripts/train_v8pas80_v2.py
+
+# 3. Sanity-check regression gates on LS holdout
+python scripts/bench_v8pas80_v2.py
+
+# 4. Export JS for Piper and deploy
+python scripts/export_v8pas80_v2_js.py
+python scripts/deploy_v8pas80_v2.py
 ```
 
-`.env` keys:
+Rollback: `python scripts/rollback_piper.py d2911d10bb <previous_revision>`
 
-| Key | Description |
-|-----|-------------|
-| `OPENROUTER_API_KEY` | OpenRouter key — used for Grok tag analysis only |
-| `EXPORT_WATCH_DIR` | Folder where mod.artworks.ai saves exports |
-| `GRAFANA_USER` | stat.artworks.ai login |
-| `GRAFANA_PASSWORD` | stat.artworks.ai password |
-| `GRAFANA_SESSION` | Auto-updated by grafana_login.py — do not edit manually |
-| `PIPER_TOKEN` | Piper API user token |
-| `PIPER_PROJECT` | Default Piper project ID (main pipeline) |
-
----
-
-## Usage
-
-All commands must be run from the **project root** (where `config.yaml` lives).
-
-### Tag-tuning commands
-
-#### List available categories
+### Cross-validate against Tom's K=30 dataset
 
 ```bash
-python scripts/run_category.py --list
+# 1. Pull dataset from Label Studio (project 5)
+# - dataset already in data/k30_ls_export_full.json
+
+# 2. Run our pipeline against his 6,675 images
+python scripts/run_k30_dataset.py --chunk 80 --workers 15
+# (resumable, appends to data/k30_ours.jsonl)
+
+# 3. Generate comparison reports
+python scripts/compare_k30_vs_ours.py     # binary head-to-head
+python scripts/compare_k30_3class.py      # 3-class child / teen / adult breakdown
 ```
 
-#### Run a category (trigger re-moderation)
+Outputs `data/k30_vs_v8pas80_v2_report.json`, `data/k30_3class_report.json` and a sample
+disagreement list at `data/k30_vs_v8pas80_v2_disagreements.json`.
+
+### Disagree-image moderation loop
 
 ```bash
-python scripts/run_category.py --category underage
-```
-
-After the agent responds "✅ Reset complete", go to [mod.artworks.ai](https://mod.artworks.ai), click **Refresh** → **Export**.
-
-#### Analyze failed images
-
-```bash
-# Auto-detect latest export from EXPORT_WATCH_DIR:
-python scripts/analyze_failed.py --category underage
-
-# Specify file explicitly:
-python scripts/analyze_failed.py --category underage --results results/export.json
-
-# Analyze only first 10 failed items (for quick testing):
-python scripts/analyze_failed.py --category underage --limit 10
-
-# Only missed threats (Failed+):
-python scripts/analyze_failed.py --category underage --type positive
-
-# Only false alarms (Failed-):
-python scripts/analyze_failed.py --category underage --type negative
-```
-
-Output: `suggestions/underage_YYYY-MM-DD.json`
-
-#### Review & apply tag suggestions
-
-```bash
-python scripts/update_tags.py --suggestions suggestions/underage_2026-04-13.json
-
-# Apply all suggestions without confirmation:
-python scripts/update_tags.py --suggestions suggestions/underage_2026-04-13.json --auto
-
-# Preview changes without writing:
-python scripts/update_tags.py --suggestions suggestions/underage_2026-04-13.json --dry-run
-```
-
-Output: updated `data/tags.json` + backup `data/tags.YYYY-MM-DD.bak.json`
-
-#### Open the simulator
-
-Open `simulator/index.html` directly in any browser. No server needed.
-
-Load your exported JSON to see Accuracy/Error per category and tune thresholds interactively.
-
----
-
-### Disagree image analysis
-
-#### Export disagree reviews from Grafana
-
-```bash
-# Fetch latest 500 disagree images, download locally, auto-moderate with Piper:
+# 1. Fetch latest disagree images from Grafana, auto-moderate via Piper
 python scripts/export_disagree.py
 
-# Options:
-python scripts/export_disagree.py --limit 1000 --hours 72   # wider lookback
-python scripts/export_disagree.py --no-download             # skip image download
-python scripts/export_disagree.py --dry-run                 # preview only
+# 2. Open the gallery to review and confirm labels
+python gallery_server.py            # http://localhost:7823
+python gallery_server.py --port 7825
 ```
 
-Downloads images to `data/disagree_images/`. Deduplicates across sessions by UUID.
-Auto-refreshes the Grafana session via Authentik SSO if expired.
+### Gallery features
 
-After download, automatically calls `moderate_disagree.py` on newly added images.
-
-#### Moderate images (Piper: Siglip2 + Qwen3-VL)
-
-```bash
-# Process all unmoderated images (Piper project d2911d10bb):
-python scripts/moderate_disagree.py
-
-# Options:
-python scripts/moderate_disagree.py --workers 3       # parallel Piper launches
-python scripts/moderate_disagree.py --limit 50        # process up to 50
-python scripts/moderate_disagree.py --reprocess       # re-run already processed
-python scripts/moderate_disagree.py --stats           # print stats only
-```
-
-Piper project `d2911d10bb` runs both Siglip2 and Qwen3-VL in one call.
-- **Qwen3-VL** → age label from youngest face in image  
-  - child: ageFrom 1–14, teen: 15–17, adult: 18+ (by minimum ageFrom)
-- **Siglip2** → blocked/passed, siglip2_labels
-
-Labels are stored as **suggestions** (`label_source: "qwen3"`, `label_confirmed: false`).
-Human confirmation in the gallery sets `label_source: "human"`, `label_confirmed: true`.
-Only confirmed records participate in training base operations.
-
-#### Review in gallery
-
-```bash
-# Start gallery server:
-python gallery_server.py                # http://localhost:7823
-python gallery_server.py --port 7825   # custom port
-```
-
-Gallery features:
-- **Two sources**: Label Studio (`qwen3_age_results.json`) + Grafana (`disagree_pool.json`)
-- **Session filter**: filter Grafana images by export batch (e.g. `2026-05-17 08:48 UTC`)
-- **Pipeline filter**: filter by siglip2 result (underage / other / passed / unprocessed)
-- **Label filter**: includes `⚡ Не подтверждено` — shows all AI-labeled, not yet confirmed
-- **Badges on cards**:
-  - `⚡ AI` (orange) — auto-labeled by Qwen3, awaiting human confirmation
-  - `✓` (green) — human-confirmed
-  - `⛔ underage` / `✓ ok` — siglip2 result
-- **Hotkeys**: hover over card → `1` = child, `2` = teen, `3` = adult
-- **Save**: marks changed labels as `label_source: "human"`, `label_confirmed: true`
-
----
+- **Three models scored inline on every card** — V8pas80-v2 (production),
+  V11s80 (candidate), V6 (legacy baseline). All three share the same SigLIP labels.
+- **Dynamic per-model thresholds** (V8 ≥ 0.30, V11 ≥ 0.30, V6 ≥ 0.80) in a collapsible bar.
+- **Filter by selected model and outcome** (TP / TN / FP / FN) — instantly find e.g. all
+  V8 false-positives on adult.
+- **Pipeline verdict badge** (`ok` / `underage`) — driven by currently-selected model at
+  current threshold, recomputes on the fly.
+- **Per-model breakdown panel** — child / teen / adult coverage with absolute-threshold
+  colour indicators and best-in-row markers.
+- **Hotkeys** on hover: `1` = child, `2` = teen, `3` = adult.
 
 ## Data model
 
-### `data/disagree_pool.json`
-
-```json
-{
-  "<uuid>": {
-    "id": "<uuid>",
-    "thumb_url": "https://s3.../thumbnail.webp",
-    "prompt": "...",
-    "exported_at": "2026-05-17T05:43:00Z",
-    "export_batch": "2026-05-17 05:43 UTC",
-    "local_path": "data/disagree_images/<uuid>.webp",
-
-    "label": "child | teen | adult | null",
-    "label_source": "qwen3 | human | null",
-    "label_confirmed": false,
-    "labeled_at": "ISO timestamp | null",
-
-    "qwen3_result": {
-      "label": "adult",
-      "faces": [{"ageFrom": 18, "ageTo": 22}],
-      "description": "...",
-      "underage": false,
-      "status": "PASS",
-      "processed_at": "ISO timestamp"
-    },
-
-    "piper_result": {
-      "siglip2_labels": ["underage"],
-      "siglip2_passed": false,
-      "siglip2_details": {...},
-      "processed_at": "ISO timestamp"
-    }
-  }
-}
-```
-
----
-
-## Project structure
+`grafana_pool` (SQLite, `gallery.db`):
 
 ```
-piper-moderate/
-├── .env.example              # secrets template (copy to .env)
-├── .gitignore
-├── config.yaml               # non-secret settings
-├── requirements.txt
-│
-├── scripts/
-│   ├── analyze_failed.py     # VLM analysis via OpenRouter/Grok
-│   ├── analyze_contextual.py # contextual analysis with full tag history
-│   ├── update_tags.py        # apply suggestions to tags.json
-│   ├── patch_and_simulate.py # simulate tag changes before applying
-│   ├── piper_check.py        # check single image against Piper
-│   │
-│   ├── export_disagree.py    # fetch disagree images from Grafana, download
-│   ├── moderate_disagree.py  # auto-moderate via Piper d2911d10bb
-│   ├── run_disagree_pipeline.py  # run labeled images through a pipeline
-│   └── grafana_login.py      # Authentik SSO → Grafana session (auto-refresh)
-│
-├── gallery_server.py         # unified gallery (port 7823)
-│
-├── simulator/
-│   └── index.html            # standalone SigLIP threshold tuner
-│
-├── data/
-│   ├── tags.json             # current tag library (versioned in git)
-│   ├── disagree_pool.json    # Grafana disagree image pool
-│   └── disagree_images/      # downloaded thumbnails (gitignored)
-│
-├── results/                  # exported test JSONs (gitignored)
-└── suggestions/              # Grok suggestion JSONs (versioned in git)
+id, thumb_url, local_path, prompt, label, label_source, label_confirmed,
+labeled_at, variant, export_batch, exported_at,
+piper_result (siglip2_labels, siglip2_passed, siglip2_details, face_detect_result),
+qwen3_result (label, faces, description, underage, status)
 ```
 
----
+`ls_images` — separate table with Label-Studio-sourced items.
 
-## Tag naming conventions
+`label_source = "qwen3"` means automatic suggestion; `"human"` means confirmed in gallery.
+Only confirmed records participate in training.
 
-See [docs/tag-naming.md](docs/tag-naming.md) for full rules.
+## Tag naming convention
 
-Quick reference:
-- `<category>_<description>` — positive detection tag
-- `no_<category>_<description>` — counter-tag to suppress false positives
-- `<key>:x20` — tag with ×20 score multiplier (high-signal indicator)
-- `<key>:x5`  — tag with ×5 score multiplier
+- `<category>_<description>` — positive detection tag (`underage_kneeling_teen_girl`)
+- `no_<category>_<description>` — counter-tag suppressing false positives
+  (`no_underage_youthful_adult_face`)
 
----
+**`:x20` / `:x5` multiplier suffixes were retired** in Sprint 2025-11 (Path A) —
+multipliers caused systematic false positives on adult POV shots
+(e.g. `man_with_young_girl:x20` firing on size-contrast adult-only scenes).
+The LGBM scorer now sees raw cosine scores without inflation.
 
-## Grafana / Authentik SSO
+## Cross-validation report
 
-Grafana session is managed automatically:
-- `GRAFANA_SESSION` in `.env` is validated on each `export_disagree.py` run
-- If expired, `grafana_login.py` performs the full Authentik OAuth flow and updates `.env`
-- Manual refresh: `python scripts/grafana_login.py`
+See [GitLab issue 3626](https://gitlab.artworks.ai/realistic-ai/fullstack/-/issues/3626)
+for the detailed comparison against Tom's K=30 (BCI) model.
 
----
+Short version: K=30 is the right architecture for a strict `≤14` CSAM detector;
+V8pas80-v2 is the right architecture for our `≤17` underage-content policy.
+Cross-evaluation shows each model dominates on its own training scope.
 
 ## Contributing
 
-1. Fork the repo
-2. Create a branch: `git checkout -b feature/improve-underage-tags`
-3. Make changes to `data/tags.json` or scripts
-4. Commit with a clear message: `git commit -m "feat(tags): add underage group nude tags"`
-5. Open a Pull Request
-
-All tag changes must be tested by running the full category before merging.
+1. Fork
+2. `git checkout -b feature/<name>`
+3. Make changes — tag library lives in `data/tags.json`; models in `data/lgbm_*.txt`
+4. Run regression bench: `python scripts/bench_v8pas80_v2.py` (all three gates must hold)
+5. Commit with clear message: `git commit -m "feat(model): add anime-cosplay hard-negs"`
+6. Open a PR
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
