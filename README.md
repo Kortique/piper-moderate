@@ -185,4 +185,16 @@ python gallery_server.py --port 7825
 
 ```
 id, thumb_url, local_path, prompt, label, label_source, label_confirmed,
-lab
+labeled_at, variant, export_batch, exported_at,
+piper_result (siglip2_labels, siglip2_passed, siglip2_details, face_detect_result),
+qwen3_result (label, faces, description, underage, status)
+```
+
+`ls_images` — separate table with Label-Studio-sourced items.
+
+`label_source = "qwen3"` means automatic suggestion; `"human"` means confirmed in gallery.
+Only confirmed records participate in training.
+
+## Tag naming convention
+
+- `{category}_{description}` — positive detection tag (`underage_kneeling_teen_girl`
