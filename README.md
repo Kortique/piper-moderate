@@ -197,8 +197,8 @@ Only confirmed records participate in training.
 
 ## Tag naming convention
 
-- `<category>_<description>` — positive detection tag (`underage_kneeling_teen_girl`)
-- `no_<category>_<description>` — counter-tag suppressing false positives
+- `{category}_{description}` — positive detection tag (`underage_kneeling_teen_girl`)
+- `no_{category}_{description}` — counter-tag suppressing false positives
   (`no_underage_youthful_adult_face`)
 
 **`:x20` / `:x5` multiplier suffixes were retired** in Sprint 2025-11 (Path A) —
@@ -218,7 +218,7 @@ Cross-evaluation shows each model dominates on its own training scope.
 ## Contributing
 
 1. Fork
-2. `git checkout -b feature/<name>`
+2. `git checkout -b feature/{name}`
 3. Make changes — tag library lives in `data/tags.json`; models in `data/lgbm_*.txt`
 4. Run regression bench: `python scripts/bench_v8pas80_v2.py` (all three gates must hold)
 5. Commit with clear message: `git commit -m "feat(model): add anime-cosplay hard-negs"`
