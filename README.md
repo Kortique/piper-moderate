@@ -75,4 +75,38 @@ piper-moderate/
 │   ├── k30_ls_export_full.json             # Tom's dataset exported
 │   ├── k30_ours.jsonl                      # our pipeline applied to it
 │   ├── k30_3class_report.json              # 3-class comparison
-│   ├── k30_vs_v8pas80_v2_report.jso
+│   ├── k30_vs_v8pas80_v2_report.json
+│   ├── v8pas80_top100_fps.json             # FP candidates
+│   ├── v8pas80_fps_grok_confirmed.json     # 67 Grok-validated confirmed adults
+│   ├── v8pas80_v2_full_thr_sweep.json      # threshold sweep on full dataset
+│   └── tags.json                           # SigLIP tag library (versioned)
+│
+└── docs/
+    └── workflow.md
+```
+
+## Setup
+
+### Clone + install
+
+```bash
+git clone https://github.com/Kortique/piper-moderate.git
+cd piper-moderate
+
+python -m venv .venv
+# Windows:   .venv\Scripts\activate
+# Mac/Linux: source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+### Configure secrets
+
+Copy `.env.example` to `.env` and fill in your credentials.
+
+**Required keys:**
+
+| Key | Used by |
+|-----|---------|
+| `PIPER_TOKEN` | all `deploy_*` / `run_*` scripts (Piper API auth) |
+| `PIPER_PROJECT` | default project ID for moderation runs |
