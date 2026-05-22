@@ -1,0 +1,9 @@
+{
+  "version": "v10rm",
+  "parent": "v10",
+  "note": "renamed :x20 AND merged no_underage into adult",
+  "n_features": 506,
+  "cv_auc": 0.9070561872953977,
+  "cv_std": 0.00703463428543027,
+  "trained_at": "2026-05-21T13:58:12.047243"
+}

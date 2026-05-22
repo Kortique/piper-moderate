@@ -1,0 +1,10 @@
+{
+  "version": "v8",
+  "threshold": 0.45,
+  "cv_auc": 0.88,
+  "n_samples": 3120,
+  "n_features": 155,
+  "vs_v7_features": "155 vs 314 (-159 мёртвых)",
+  "blocking_rule": "lgbm_score >= 0.45 OR minor >= 0.72",
+  "trained_at": "2026-05-20T23:05:33.899475"
+}

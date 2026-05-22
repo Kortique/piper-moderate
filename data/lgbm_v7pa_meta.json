@@ -1,0 +1,9 @@
+{
+  "version": "v7pa",
+  "parent": "v7",
+  "note": "Path A: raw scores (multiplier removed), :x20 stripped from feature names, no_underage NOT merged",
+  "n_features": 314,
+  "cv_auc": 0.8743157457148014,
+  "cv_std": 0.013782061264732057,
+  "trained_at": "2026-05-21T14:45:12.933406"
+}

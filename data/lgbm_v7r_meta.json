@@ -1,0 +1,9 @@
+{
+  "version": "v7r",
+  "parent": "v7",
+  "note": "renamed :x20/:x5 features",
+  "n_features": 314,
+  "cv_auc": 0.8743157457148014,
+  "cv_std": 0.013782061264732057,
+  "trained_at": "2026-05-21T13:58:14.165320"
+}

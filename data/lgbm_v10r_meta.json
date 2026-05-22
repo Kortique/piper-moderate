@@ -1,0 +1,9 @@
+{
+  "version": "v10r",
+  "parent": "v10",
+  "note": "renamed :x20/:x5 features (suffix stripped)",
+  "n_features": 511,
+  "cv_auc": 0.9079987915513834,
+  "cv_std": 0.006225476843055829,
+  "trained_at": "2026-05-21T13:58:06.903549"
+}

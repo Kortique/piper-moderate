@@ -1,0 +1,25 @@
+{
+  "version": "v7",
+  "trained_at": "2026-05-20T22:10:51.080865",
+  "cv_auc": 0.8792,
+  "threshold": 0.45,
+  "n_samples": 3718,
+  "n_features": 314,
+  "eval_ls": {
+    "child_recall": 98.2,
+    "teen_recall": 80.2,
+    "adult_fpr": 13.1,
+    "note": "all targets MET"
+  },
+  "vs_v6": {
+    "child_delta": "+0.3pp",
+    "teen_delta": "+6.4pp",
+    "fpr_delta": "-15.9pp",
+    "note": "V6 thr=0.55 on LS: child=97.9% teen=73.8% fpr=29.0%"
+  },
+  "blocking_rule": "lgbm_score >= 0.45 OR minor >= 0.72",
+  "training": {
+    "hard_pos_317": 30,
+    "hard_neg_317": 39
+  }
+}

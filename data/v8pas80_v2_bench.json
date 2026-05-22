@@ -1,0 +1,169 @@
+{
+  "V8pas80": {
+    "auc": 0.9678577287704895,
+    "per_thr": {
+      "0.2": {
+        "child_recall": 1.0,
+        "teen_recall": 0.9779816513761468,
+        "adult_fpr": 0.3952312138728324,
+        "counts": {
+          "child": 283,
+          "teen": 545,
+          "adult": 1384,
+          "tp_child": 283,
+          "tp_teen": 533,
+          "fp_adult": 547
+        }
+      },
+      "0.25": {
+        "child_recall": 0.9964664310954063,
+        "teen_recall": 0.9431192660550459,
+        "adult_fpr": 0.22976878612716764,
+        "counts": {
+          "child": 283,
+          "teen": 545,
+          "adult": 1384,
+          "tp_child": 282,
+          "tp_teen": 514,
+          "fp_adult": 318
+        }
+      },
+      "0.3": {
+        "child_recall": 0.9893992932862191,
+        "teen_recall": 0.8990825688073395,
+        "adult_fpr": 0.12716763005780346,
+        "counts": {
+          "child": 283,
+          "teen": 545,
+          "adult": 1384,
+          "tp_child": 280,
+          "tp_teen": 490,
+          "fp_adult": 176
+        }
+      },
+      "0.35": {
+        "child_recall": 0.9893992932862191,
+        "teen_recall": 0.8110091743119267,
+        "adult_fpr": 0.07442196531791907,
+        "counts": {
+          "child": 283,
+          "teen": 545,
+          "adult": 1384,
+          "tp_child": 280,
+          "tp_teen": 442,
+          "fp_adult": 103
+        }
+      },
+      "0.4": {
+        "child_recall": 0.9752650176678446,
+        "teen_recall": 0.7376146788990826,
+        "adult_fpr": 0.03901734104046243,
+        "counts": {
+          "child": 283,
+          "teen": 545,
+          "adult": 1384,
+          "tp_child": 276,
+          "tp_teen": 402,
+          "fp_adult": 54
+        }
+      },
+      "0.5": {
+        "child_recall": 0.9434628975265018,
+        "teen_recall": 0.6055045871559633,
+        "adult_fpr": 0.016618497109826588,
+        "counts": {
+          "child": 283,
+          "teen": 545,
+          "adult": 1384,
+          "tp_child": 267,
+          "tp_teen": 330,
+          "fp_adult": 23
+        }
+      }
+    }
+  },
+  "V8pas80_v2": {
+    "auc": 0.9737794427689817,
+    "per_thr": {
+      "0.2": {
+        "child_recall": 0.9929328621908127,
+        "teen_recall": 0.9412844036697248,
+        "adult_fpr": 0.21459537572254336,
+        "counts": {
+          "child": 283,
+          "teen": 545,
+          "adult": 1384,
+          "tp_child": 281,
+          "tp_teen": 513,
+          "fp_adult": 297
+        }
+      },
+      "0.25": {
+        "child_recall": 0.9893992932862191,
+        "teen_recall": 0.8880733944954129,
+        "adult_fpr": 0.0953757225433526,
+        "counts": {
+          "child": 283,
+          "teen": 545,
+          "adult": 1384,
+          "tp_child": 280,
+          "tp_teen": 484,
+          "fp_adult": 132
+        }
+      },
+      "0.3": {
+        "child_recall": 0.9752650176678446,
+        "teen_recall": 0.8128440366972477,
+        "adult_fpr": 0.03901734104046243,
+        "counts": {
+          "child": 283,
+          "teen": 545,
+          "adult": 1384,
+          "tp_child": 276,
+          "tp_teen": 443,
+          "fp_adult": 54
+        }
+      },
+      "0.35": {
+        "child_recall": 0.9646643109540636,
+        "teen_recall": 0.7321100917431193,
+        "adult_fpr": 0.016618497109826588,
+        "counts": {
+          "child": 283,
+          "teen": 545,
+          "adult": 1384,
+          "tp_child": 273,
+          "tp_teen": 399,
+          "fp_adult": 23
+        }
+      },
+      "0.4": {
+        "child_recall": 0.9611307420494699,
+        "teen_recall": 0.6568807339449542,
+        "adult_fpr": 0.011560693641618497,
+        "counts": {
+          "child": 283,
+          "teen": 545,
+          "adult": 1384,
+          "tp_child": 272,
+          "tp_teen": 358,
+          "fp_adult": 16
+        }
+      },
+      "0.5": {
+        "child_recall": 0.9257950530035336,
+        "teen_recall": 0.5082568807339449,
+        "adult_fpr": 0.001445086705202312,
+        "counts": {
+          "child": 283,
+          "teen": 545,
+          "adult": 1384,
+          "tp_child": 262,
+          "tp_teen": 277,
+          "fp_adult": 2
+        }
+      }
+    }
+  },
+  "gates_pass": true
+}

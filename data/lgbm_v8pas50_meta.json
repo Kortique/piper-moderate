@@ -1,0 +1,10 @@
+{
+  "version": "v8pas50",
+  "parent": "v8pa",
+  "note": "V8pa pruned to top-50",
+  "top_n_target": 50,
+  "n_features": 50,
+  "cv_auc": 0.8661886913653714,
+  "cv_std": 0.011028282907407006,
+  "trained_at": "2026-05-21T17:45:04.938316"
+}

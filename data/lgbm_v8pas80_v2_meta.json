@@ -1,0 +1,16 @@
+{
+  "version": "v8pas80_v2",
+  "parent": "v8pa_v2",
+  "note": "V8pa retrained with extended hard-neg pool (71 V7pa + 67 Grok-confirmed FPs), pruned to top-80 by gain",
+  "n_samples": 3574,
+  "n_features": 80,
+  "cv_auc_full": 0.8521904878040638,
+  "cv_auc_slim": 0.8503121024773795,
+  "cv_std_full": 0.012838249410750199,
+  "cv_std_slim": 0.013137947513174389,
+  "hard_neg_count": 138,
+  "hard_neg_weight": 20,
+  "hard_neg_v7pa": 71,
+  "hard_neg_grok": 67,
+  "trained_at": "2026-05-21T21:43:07.135383"
+}

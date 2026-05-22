@@ -1,0 +1,49 @@
+# piper-moderate project configuration
+# Non-secret settings. Secrets go in .env
+
+openrouter:
+  model: x-ai/grok-4.1-fast
+  max_tokens: 2048
+  # Parallel requests to VLM (don't set too high — rate limits)
+  concurrency: 3
+
+categories:
+  # Maps UI category name → n8n reset command → siglip2 detail key
+  # detail_key = key inside models.siglip2.details (may differ from category name)
+  underage:
+    reset_command: reset_underage
+    json_key: underage
+    detail_key: underage
+  bestiality:
+    reset_command: reset_bestiality
+    json_key: bestiality
+    detail_key: bestiality
+  human_waste:
+    reset_command: reset_waste
+    json_key: human_waste
+    detail_key: humanWaste        # camelCase in siglip2 details
+  death_and_murder:
+    reset_command: reset_death
+    json_key: death_and_murder
+    detail_key: death             # short key in siglip2 details
+  weapons_and_military:
+    reset_command: reset_weapons
+    json_key: weapons_and_military
+    detail_key: weapons           # short key in siglip2 details
+  blood:
+    reset_command: reset_blood
+    json_key: blood
+    detail_key: blood
+  drugs:
+    reset_command: reset_drugs
+    json_key: drugs
+    detail_key: drugs
+  rape:
+    reset_command: reset_rape
+    json_key: rape
+    detail_key: rape
+
+tags_file: data/tags.json
+
+# Where to look for exported test JSON (can be overridden with --results flag)
+default_results_dir: results

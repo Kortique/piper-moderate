@@ -1,0 +1,9 @@
+{
+  "version": "v10pa",
+  "parent": "v10",
+  "note": "Path A: raw scores (multiplier removed), :x20 stripped, no_underage MERGED into adult",
+  "n_features": 506,
+  "cv_auc": 0.9058378123456263,
+  "cv_std": 0.007082758929828547,
+  "trained_at": "2026-05-21T14:45:15.560809"
+}

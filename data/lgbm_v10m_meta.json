@@ -1,0 +1,9 @@
+{
+  "version": "v10m",
+  "parent": "v10",
+  "note": "merged no_underage_ into adult_ (max on collision)",
+  "n_features": 509,
+  "cv_auc": 0.9094924985879589,
+  "cv_std": 0.006028260189934828,
+  "trained_at": "2026-05-21T13:58:09.434525"
+}

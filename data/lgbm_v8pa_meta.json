@@ -1,0 +1,18 @@
+{
+  "version": "v8pa",
+  "parent": "v7pa",
+  "note": "V7pa + BCI feature split + hard-neg mining x20 on 71 V7pa FPs",
+  "n_samples": 3685,
+  "n_features": 318,
+  "cv_auc": 0.8671924439117713,
+  "cv_std": 0.010990152351816624,
+  "bci_aggregates": [
+    "_child_body",
+    "_child_context",
+    "_child_interaction",
+    "_body_vs_context"
+  ],
+  "hard_neg_count": 71,
+  "hard_neg_weight": 20,
+  "trained_at": "2026-05-21T17:38:40.054985"
+}

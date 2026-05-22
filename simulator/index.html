@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SigLIP Threshold Simulator</title>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+    body { background: #0d0d0d; color: #e0e0e0; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #111; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #444; }
+    input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 2px; background: #2a2a2a; outline: none; cursor: pointer; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #6366f1; cursor: pointer; }
+    input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #6366f1; cursor: pointer; border: none; }
+    input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { opacity: 1; }
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 100;
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .modal-box {
+      background: #161616; border: 1px solid #252525; border-radius: 12px;
+      width: 100%; max-width: 620px; max-height: 82vh;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .modal-box.wide { max-width: 780px; }
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #1e1e1e; border: 1px solid #333; border-radius: 8px;
+      padding: 12px 20px; font-size: 13px; color: #ccc;
+      display: flex; align-items: center; gap: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      animation: slideUp 0.25s ease; z-index: 200;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+      to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid #333; border-top-color: #6366f1;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useCallback, useMemo, useRef, useEffect } = React;
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+
+const DEFAULT_CONFIG = {
+  underage_confidence:      0.6,
+  underage_min_score:       0.004,
+  auto_trigger_minor_risk:  0.85,
+  lgbm_threshold:           0.90,
+  lgbm_enabled:             1,    // 1 = use LGBM in combined decision, 0 = siglip2-only
+  bestiality_threshold:     0.05,
+  human_waste_threshold:    0.05,
+  blood_threshold:          0.01,
+  death_threshold:          0.01,
+  weapons_threshold:        0.0105,
+  drugs_threshold:          0.01,
+  rape_threshold:           0.01,
+  label_threshold:          0.15,
+  tag_double_bang:          20.0,
+  tag_single_bang:          5.0,
+};
+
+const CATEGORIES = [
+  { id: 'underage',            label: 'Underage',            num: 1, color: '#ef4444' },
+  { id: 'bestiality',          label: 'Bestiality',          num: 2, color: '#f97316' },
+  { id: 'human_waste',         label: 'Human Waste',         num: 3, color: '#eab308' },
+  { id: 'death_and_murder',    label: 'Death & Murder',      num: 4, color: '#22c55e' },
+  { id: 'weapons_and_military',label: 'Weapons & Military',  num: 5, color: '#3b82f6' },
+  { id: 'blood',               label: 'Blood',               num: 6, color: '#6366f1' },
+  { id: 'drugs',               label: 'Drugs',               num: 7, color: '#8b5cf6' },
+  { id: 'rape',                label: 'Rape',                num: 8, color: '#ec4899' },
+  { id: 'ebony',               label: 'ebony',               num: null, color: '#555' },
+  { id: 'indian',              label: 'indian',              num: null, color: '#555' },
+  { id: 'latin',               label: 'latin',               num: null, color: '#555' },
+  { id: 'asian',               label: 'asian',               num: null, color: '#555' },
+  { id: 'arab',                label: 'arab',                num: null, color: '#555' },
+];
+
+const TABS = ['siglip2', 'faces', 'hive', 'qwen3'];
+
+const STORAGE_KEY = 'siglip_profiles';
+
+// ============================================================
+// AUTOTUNE GRIDS
+// ============================================================
+
+function gridRange(start, end, step) {
+  const out = [];
+  for (let v = start; v <= end + step * 0.0001; v += step)
+    out.push(Math.round(v * 10000) / 10000);
+  return out;
+}
+
+const PARAM_LABELS = {
+  underage_confidence:      'Confidence',
+  underage_min_score:       'Min Score',
+  auto_trigger_minor_risk:  'Auto Trigger',
+  lgbm_threshold:           'LGBM Threshold',
+  tag_double_bang:          ':x20 mult',
+  tag_single_bang:          ':x5 mult',
+  bestiality_threshold:     'Threshold',
+  human_waste_threshold:    'Threshold',
+  blood_threshold:          'Threshold',
+  death_threshold:          'Threshold',
+  weapons_threshold:        'Threshold',
+  drugs_threshold:          'Threshold',
+  rape_threshold:           'Threshold',
+  label_threshold:          'Threshold',
+};
+
+const singleParam = (key, lo, hi, step) => ({
+  params: [key],
+  grids:  { [key]: gridRange(lo, hi, step) },
+});
+
+const AUTOTUNE_GRIDS = {
+  underage: {
+    params: ['underage_confidence','underage_min_score','auto_trigger_minor_risk','lgbm_threshold','tag_double_bang','tag_single_bang'],
+    grids: {
+      underage_confidence:     [0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],
+      underage_min_score:      [0.001, 0.003, 0.005, 0.008, 0.012],
+      auto_trigger_minor_risk: [0.7, 0.8, 0.85, 0.9, 0.95],
+      lgbm_threshold:          [0.80, 0.85, 0.88, 0.90, 0.92, 0.95],
+      tag_double_bang:         [10, 15, 20, 25, 30],
+      tag_single_bang:         [3, 4, 5, 6, 8],
+    },
+  },
+  bestiality:           singleParam('bestiality_threshold',  0.005, 0.2, 0.005),
+  human_waste:          singleParam('human_waste_threshold', 0.005, 0.2, 0.005),
+  blood:                singleParam('blood_threshold',       0.002, 0.15, 0.002),
+  death_and_murder:     singleParam('death_threshold',       0.002, 0.15, 0.002),
+  weapons_and_military: singleParam('weapons_threshold',     0.002, 0.15, 0.002),
+  drugs:                singleParam('drugs_threshold',       0.002, 0.15, 0.002),
+  rape:                 singleParam('rape_threshold',        0.002, 0.15, 0.002),
+  ebony:                singleParam('label_threshold',       0.01, 0.5, 0.01),
+  indian:               singleParam('label_threshold',       0.01, 0.5, 0.01),
+  latin:                singleParam('label_threshold',       0.01, 0.5, 0.01),
+  asian:                singleParam('label_threshold',       0.01, 0.5, 0.01),
+  arab:                 singleParam('label_threshold',       0.01, 0.5, 0.01),
+};
+
+function generateCombinations(params, grids) {
+  if (!params.length) return [{}];
+  const [first, ...rest] = params;
+  const sub = generateCombinations(rest, grids);
+  const out = [];
+  for (const v of grids[first]) for (const s of sub) out.push({ [first]: v, ...s });
+  return out;
+}
+
+// ============================================================
+// PROFILE STORAGE HELPERS
+// ============================================================
+
+function loadProfiles() {
+  try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : []; }
+  catch { return []; }
+}
+
+function saveProfiles(profiles) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles)); } catch {}
+}
+
+function createProfile(name, linkedFile, config) {
+  return {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    name, linkedFile: linkedFile || null,
+    savedAt: new Date().toISOString(),
+    config: { ...config },
+  };
+}
+
+function formatDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+       + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
+// ============================================================
+// EVALUATION LOGIC
+// ============================================================
+
+function combineScores(scoresObj) {
+  const vals = Object.values(scoresObj);
+  if (!vals.length) return 0;
+  return 1 - vals.reduce((prod, p) => prod * (1 - Math.max(0, Math.min(0.9999, Number(p) || 0))), 1);
+}
+
+// Reads the original multiplier embedded in a tag name.
+// Format: ":x<N>" suffix  →  "adult_with_child:x20"  → 20
+//         no suffix       →  "naked_child"            →  1
+function getOrigMult(key) {
+  const m = key.match(/:x(\d+(?:\.\d+)?)$/);
+  if (m) return parseFloat(m[1]);
+  return 1.0;
+}
+
+// Maps the original multiplier to the user-adjusted value via sidebar sliders.
+// :x20  →  controlled by "x20 multiplier" slider (doubleBang)
+// :x5   →  controlled by "x5 multiplier"  slider (singleBang)
+// any other   →  keeps its embedded value unchanged
+function getNewMult(key, doubleBang, singleBang) {
+  const origMult = getOrigMult(key);
+  if (origMult === 20.0) return doubleBang;
+  if (origMult === 5.0)  return singleBang;
+  return origMult;
+}
+
+function evaluateSiglip2(item, cfg) {
+  const d = item.models?.siglip2?.details;
+  if (!d) return null;
+  const cat = item.category;
+  const {
+    underage_confidence, underage_min_score, auto_trigger_minor_risk,
+    lgbm_threshold, lgbm_enabled,
+    bestiality_threshold, human_waste_threshold, blood_threshold,
+    death_threshold, weapons_threshold, drugs_threshold, rape_threshold,
+    label_threshold, tag_double_bang, tag_single_bang
+  } = cfg;
+
+  if (cat === 'underage') {
+    const labelData = d.underage?.labels;
+    let minor, adult;
+    if (labelData) {
+      // Re-simulate: un-apply stored :xN multiplier → re-apply slider value.
+      // Tags without :xN suffix keep their stored (post-multiplier) value as-is.
+      const underageAdj = {};
+      for (const [k, v] of Object.entries(labelData.underage || {})) {
+        const origMult = getOrigMult(k);
+        const raw = origMult !== 1.0 ? (Number(v) / origMult) : Number(v);
+        underageAdj[k] = Math.min(raw * getNewMult(k, tag_double_bang, tag_single_bang), 0.999);
+      }
+      const adultAdj = {};
+      for (const [k, v] of Object.entries(labelData.adult || {})) adultAdj[k] = Number(v) || 0;
+      minor = combineScores(underageAdj);
+      adult = combineScores(adultAdj);
+    } else {
+      // No per-tag label data — fall back to stored aggregate scores.
+      minor = Number(d.underage?.minor) || 0;
+      adult = Number(d.underage?.adult) || 0;
+    }
+    const total = minor + adult;
+    const confidence = total > 0 ? minor / total : 0;
+    const siglipBlocked = minor >= auto_trigger_minor_risk ||
+                          (confidence >= underage_confidence && minor >= underage_min_score);
+
+    // LGBM combined decision: block if SigLIP2 OR LGBM fires (when enabled)
+    const lgbmScore = d.underage?.lgbm?.score ?? null;
+    const lgbmBlocked = lgbm_enabled >= 0.5 && lgbmScore !== null && lgbmScore >= lgbm_threshold;
+
+    return siglipBlocked || lgbmBlocked;
+  }
+
+  if (cat === 'bestiality') {
+    const risk  = parseFloat(d.bestiality?.risk)  || 0;
+    const furry = parseFloat(d.bestiality?.furry) || 0;
+    return risk >= bestiality_threshold && risk > furry;
+  }
+  if (cat === 'human_waste')         return (parseFloat(d.humanWaste?.risk)  || 0) >= human_waste_threshold;
+  if (cat === 'blood') {
+    const b  = parseFloat(d.blood?.blood)   || 0;
+    const nb = parseFloat(d.blood?.noBlood) || 0;
+    return b >= blood_threshold && b > nb;
+  }
+  if (cat === 'death_and_murder')    return (parseFloat(d.death?.risk)    || 0) >= death_threshold;
+  if (cat === 'weapons_and_military')return (parseFloat(d.weapons?.risk)  || 0) >= weapons_threshold;
+  if (cat === 'drugs')               return (parseFloat(d.drugs?.risk)    || 0) >= drugs_threshold;
+  if (cat === 'rape')                return (parseFloat(d.rape?.risk)     || 0) >= rape_threshold;
+  if (cat === 'asian')   return (parseFloat(d.asian?.score)  || 0) >= label_threshold;
+  if (cat === 'ebony')   return (parseFloat(d.ebony?.score)  || 0) >= label_threshold;
+  if (cat === 'arab')    return (parseFloat(d.arab?.score)   || 0) >= label_threshold;
+  if (cat === 'latin')   return (parseFloat(d.latin?.score)  || 0) >= label_threshold;
+  if (cat === 'indian')  return (parseFloat(d.indian?.score) || 0) >= label_threshold;
+  return null;
+}
+
+function evaluateFaces(item) {
+  const faces = item.models?.faces?.details?.faces;
+  if (!faces || item.category !== 'underage') return null;
+  for (const f of faces) { if ((f.ageFrom <= 9) || (f.ageTo < 18)) return true; }
+  return false;
+}
+
+function evaluateHive(item) {
+  const ans = item.models?.hive?.details?.answer;
+  if (!ans) return null;
+  const keyMap = {
+    underage:'underage', bestiality:'bestiality', human_waste:'human_waste',
+    death_and_murder:'death_and_murder', weapons_and_military:'weapons_and_military',
+    drugs:'drugs', blood:'blood',
+  };
+  const k = keyMap[item.category];
+  return k && k in ans ? ans[k] === 'yes' : null;
+}
+
+function evaluateQwen3(item) {
+  const det = item.models?.qwen3?.details;
+  if (!det) return null;
+  const keyMap = {
+    underage:'underage', bestiality:'bestiality', human_waste:'human_waste',
+    death_and_murder:'death_and_murder', weapons_and_military:'weapons_and_military',
+    drugs:'drugs', blood:'blood', rape:'rape',
+    asian:'asian', ebony:'ebony', arab:'arab', latin:'latin', indian:'indian',
+  };
+  const k = keyMap[item.category];
+  return k && k in det ? det[k] === true : null;
+}
+
+function computeStats(data, tab, cfg, baseline) {
+  const result = {};
+  for (const cat of CATEGORIES) {
+    const items = data.filter(x => x.category === cat.id);
+    if (!items.length) continue;
+    let total = 0, pos = 0, neg = 0, unsure = 0, fp = 0, fn = 0, bfp = 0, bfn = 0;
+    for (const item of items) {
+      const hasSrc = tab === 'siglip2' ? !!item.models?.siglip2 :
+                     tab === 'faces'   ? !!item.models?.faces :
+                     tab === 'hive'    ? !!item.models?.hive :
+                     tab === 'qwen3'   ? !!item.models?.qwen3 : false;
+      if (!hasSrc) continue;
+      total++;
+      if (item.variant === 'positive') pos++;
+      if (item.variant === 'negative') neg++;
+      if (item.uncertain) { unsure++; continue; }
+      let detected = null, bDetected = null;
+      if (tab === 'siglip2') {
+        detected  = evaluateSiglip2(item, cfg);
+        bDetected = evaluateSiglip2(item, baseline);
+      } else if (tab === 'faces') {
+        detected = bDetected = evaluateFaces(item);
+      } else if (tab === 'hive') {
+        detected = bDetected = evaluateHive(item);
+      } else if (tab === 'qwen3') {
+        detected = bDetected = evaluateQwen3(item);
+      }
+      if (detected  !== null) { if (item.variant==='positive'&&!detected)  fn++; if (item.variant==='negative'&&detected)  fp++; }
+      if (bDetected !== null) { if (item.variant==='positive'&&!bDetected) bfn++; if (item.variant==='negative'&&bDetected) bfp++; }
+    }
+    const effNeg = neg - unsure;
+    result[cat.id] = {
+      total, pos, neg, unsure, failed: fp+fn, fp, fn,
+      acc:  pos    > 0 ? (pos-fn)  / pos    * 100 : null,
+      err:  effNeg > 0 ? fp  / effNeg * 100 : null,
+      bAcc: pos    > 0 ? (pos-bfn) / pos    * 100 : null,
+      bErr: effNeg > 0 ? bfp / effNeg * 100 : null,
+    };
+  }
+  return result;
+}
+
+// single-category siglip2 stats — used by autotune
+function computeCatStats(items, cfg) {
+  let pos = 0, neg = 0, unsure = 0, fp = 0, fn = 0;
+  for (const item of items) {
+    if (item.variant === 'positive') pos++;
+    if (item.variant === 'negative') neg++;
+    if (item.uncertain) { unsure++; continue; }
+    const det = evaluateSiglip2(item, cfg);
+    if (det !== null) {
+      if (item.variant === 'positive' && !det) fn++;
+      if (item.variant === 'negative' &&  det) fp++;
+    }
+  }
+  const effNeg = neg - unsure;
+  return {
+    acc: pos    > 0 ? (pos - fn) / pos    * 100 : null,
+    err: effNeg > 0 ? fp  / effNeg * 100 : null,
+    fp, fn, pos, neg, unsure,
+  };
+}
+
+// ============================================================
+// AUTOTUNE ENGINE  (async, chunked — never blocks the UI thread)
+// ============================================================
+
+const PRIORITY_WEIGHTS = {
+  acc: [3, 1],
+  bal: [1, 1],
+  err: [1, 3],
+};
+
+function scoreResult(acc, err, priority) {
+  const [wa, we] = PRIORITY_WEIGHTS[priority] || [1, 1];
+  return wa * (acc ?? 0) - we * (err ?? 0);
+}
+
+// cancelRef.current = true aborts mid-run
+async function runAutotuneAsync(data, catId, baseConfig, priority, onProgress, cancelRef) {
+  const gridDef = AUTOTUNE_GRIDS[catId];
+  if (!gridDef) return null;
+
+  const items = data.filter(x => x.category === catId && !!x.models?.siglip2);
+  if (!items.length) return null;
+
+  const combos     = generateCombinations(gridDef.params, gridDef.grids);
+  const totalCombos = combos.length;
+  const curStats   = computeCatStats(items, baseConfig);
+
+  const CHUNK = 200; // combos per tick — keeps each tick ≤ ~30 ms
+  const allResults = [];
+
+  for (let i = 0; i < combos.length; i += CHUNK) {
+    if (cancelRef.current) return null;          // cancelled
+
+    const slice = combos.slice(i, i + CHUNK);
+    for (const combo of slice) {
+      const cfg = { ...baseConfig, ...combo };
+      const s   = computeCatStats(items, cfg);
+      allResults.push({ params: combo, acc: s.acc, err: s.err, fp: s.fp, fn: s.fn,
+                        score: scoreResult(s.acc, s.err, priority) });
+    }
+
+    onProgress(Math.min((i + CHUNK) / totalCombos, 1));
+    await new Promise(r => setTimeout(r, 0));    // yield to browser
+  }
+
+  if (cancelRef.current) return null;
+
+  allResults.sort((a, b) => b.score - a.score);
+
+  // Diversity filter: keep top 8 with meaningfully different Acc/Err pairs
+  const topN = [];
+  for (const r of allResults) {
+    if (topN.length >= 8) break;
+    const isDup = topN.some(k =>
+      Math.abs((k.acc ?? 0) - (r.acc ?? 0)) < 0.1 &&
+      Math.abs((k.err ?? 0) - (r.err ?? 0)) < 0.1
+    );
+    if (!isDup) topN.push(r);
+  }
+
+  return { results: topN, current: curStats, totalCombos, params: gridDef.params };
+}
+
+// ============================================================
+// SLIDER IMPACT COMPUTATION
+// ============================================================
+
+// Which siglip2 categories each config key directly affects
+const SLIDER_TO_CATS = {
+  underage_confidence:      ['underage'],
+  underage_min_score:       ['underage'],
+  auto_trigger_minor_risk:  ['underage'],
+  lgbm_threshold:           ['underage'],
+  lgbm_enabled:             ['underage'],
+  bestiality_threshold:     ['bestiality'],
+  human_waste_threshold:    ['human_waste'],
+  blood_threshold:          ['blood'],
+  death_threshold:          ['death_and_murder'],
+  weapons_threshold:        ['weapons_and_military'],
+  drugs_threshold:          ['drugs'],
+  rape_threshold:           ['rape'],
+  label_threshold:          ['asian', 'ebony', 'arab', 'latin', 'indian'],
+  tag_double_bang:          ['underage'],
+  tag_single_bang:          ['underage'],
+};
+
+// For a single config key, compute isolated impact vs DEFAULT_CONFIG.
+// Holds all other keys at DEFAULT_CONFIG so each slider's indicator is independent.
+// Net = ΔAcc − ΔErr  (acc gain positive, err gain negative → subtracted = positive contribution)
+function computeSliderImpacts(data, config) {
+  const impacts = {};
+  const cachedItems = {};
+
+  const getItems = (catId) => {
+    if (!cachedItems[catId])
+      cachedItems[catId] = data.filter(x => x.category === catId && !!x.models?.siglip2);
+    return cachedItems[catId];
+  };
+
+  for (const [key, cats] of Object.entries(SLIDER_TO_CATS)) {
+    const curVal = config[key];
+    const defVal = DEFAULT_CONFIG[key];
+
+    if (Math.abs(curVal - defVal) < 0.000001) { impacts[key] = null; continue; }
+
+    const variantCfg = { ...DEFAULT_CONFIG, [key]: curVal };
+    let totalDAcc = 0, cAcc = 0, totalDErr = 0, cErr = 0;
+
+    for (const catId of cats) {
+      const items = getItems(catId);
+      if (!items.length) continue;
+      const def = computeCatStats(items, DEFAULT_CONFIG);
+      const nxt = computeCatStats(items, variantCfg);
+      if (def.acc !== null && nxt.acc !== null) { totalDAcc += nxt.acc - def.acc; cAcc++; }
+      if (def.err !== null && nxt.err !== null) { totalDErr += nxt.err - def.err; cErr++; }
+    }
+
+    const dAcc = cAcc > 0 ? totalDAcc / cAcc : null;
+    const dErr = cErr > 0 ? totalDErr / cErr : null;
+    const net  = (dAcc ?? 0) - (dErr ?? 0); // positive = overall improvement
+
+    impacts[key] = { dAcc, dErr, net, hasData: cAcc > 0 || cErr > 0 };
+  }
+  return impacts;
+}
+
+// ============================================================
+// SMALL COMPONENTS
+// ============================================================
+
+function SliderRow({ label, cfgKey, value, min, max, step, onChange, hint, impact }) {
+  const pct = Math.round(((value - min) / (max - min)) * 100);
+  const fmt = (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+
+  const showImpact = impact && impact.hasData;
+  const good    = showImpact && impact.net >= 0;
+  const netCol  = good ? '#22c55e' : '#ef4444';
+  const netBg   = good ? 'rgba(34,197,94,0.07)' : 'rgba(239,68,68,0.07)';
+  const netBdr  = good ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.18)';
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {showImpact && (
+        <div style={{ display:'flex', gap:10, fontSize:10, alignItems:'center', padding:'3px 8px', borderRadius:4, marginBottom:5, background:netBg, border:`1px solid ${netBdr}` }}>
+          {impact.dAcc !== null && (
+            <span style={{ color:'#555' }}>
+              Acc&nbsp;<span style={{ color: impact.dAcc >= 0 ? '#22c55e' : '#ef4444', fontWeight:700 }}>{fmt(impact.dAcc)}</span>
+            </span>
+          )}
+          {impact.dErr !== null && (
+            <span style={{ color:'#555' }}>
+              Err&nbsp;<span style={{ color: impact.dErr <= 0 ? '#22c55e' : '#ef4444', fontWeight:700 }}>{fmt(impact.dErr)}</span>
+            </span>
+          )}
+          <span style={{ marginLeft:'auto', fontWeight:800, color:netCol, letterSpacing:-0.3 }}>
+            Net {impact.net >= 0 ? '+' : ''}{impact.net.toFixed(1)}
+          </span>
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+        <span style={{ fontSize: 12, color: '#999' }}>{label}</span>
+        <input
+          type="number" value={value} min={min} max={max} step={step}
+          onChange={e => onChange(cfgKey, e.target.value)}
+          style={{ width: 72, background: '#1e1e1e', border: '1px solid #333', color: '#e0e0e0', borderRadius: 4, padding: '3px 7px', fontSize: 12, outline: 'none' }}
+        />
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(cfgKey, e.target.value)}
+        style={{ width: '100%', accentColor: '#6366f1', background: `linear-gradient(to right, #6366f1 ${pct}%, #2a2a2a ${pct}%)` }}
+      />
+      {hint && <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>{hint}</div>}
+    </div>
+  );
+}
+
+function Delta({ cur, base, isAcc }) {
+  if (cur === null || base === null) return null;
+  const d = cur - base;
+  if (Math.abs(d) < 0.05) return null;
+  const good = isAcc ? d > 0 : d < 0;
+  const col = good ? '#22c55e' : '#ef4444';
+  const bg  = good ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)';
+  return (
+    <span style={{ marginLeft: 5, fontSize: 10, color: col, background: bg, padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>
+      {d > 0 ? '+' : ''}{d.toFixed(1)}%
+    </span>
+  );
+}
+
+function Badge({ n }) {
+  if (!n) return null;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: 18, height: 18, borderRadius: '50%', fontSize: 9, fontWeight: 700,
+      color: '#fff', flexShrink: 0,
+      background: ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#6366f1','#8b5cf6','#ec4899'][n - 1],
+    }}>{n}</span>
+  );
+}
+
+function Toast({ message, icon, onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 3500); return () => clearTimeout(t); }, []);
+  return (
+    <div className="toast">
+      <span style={{ fontSize: 16 }}>{icon || '✅'}</span>
+      <span>{message}</span>
+    </div>
+  );
+}
+
+// ============================================================
+// STATS TABLE
+// ============================================================
+
+function StatsTable({ stats, isSimulatable }) {
+  const hasAnyData = Object.keys(stats).length > 0;
+  if (!hasAnyData) return (
+    <div style={{ padding: 40, textAlign: 'center', color: '#444' }}>No data available for this model in the loaded file.</div>
+  );
+  const thStyle = { padding:'10px 10px', textAlign:'center', color:'#666', fontWeight:600, fontSize:12, textTransform:'uppercase', letterSpacing:0.5, whiteSpace:'nowrap', borderBottom:'1px solid #252525' };
+  const tdStyle = (extra={}) => ({ padding:'9px 10px', textAlign:'center', borderBottom:'1px solid #1a1a1a', ...extra });
+
+  return (
+    <div style={{ overflowX:'auto' }}>
+      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+        <thead>
+          <tr style={{ background:'#161616' }}>
+            <th style={{ ...thStyle, textAlign:'left', paddingLeft:16 }}>Category</th>
+            <th style={thStyle}>Total</th><th style={thStyle}>Positive</th><th style={thStyle}>Negative</th><th style={thStyle}>Unsure</th><th style={thStyle}>Failed</th>
+            <th style={{ ...thStyle, color:'#f97316' }}>Failed +</th>
+            <th style={{ ...thStyle, color:'#ef4444' }}>Failed −</th>
+            <th style={{ ...thStyle, color:'#22c55e' }}>Accuracy</th>
+            <th style={{ ...thStyle, color:'#ef4444' }}>Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          {CATEGORIES.map((cat, i) => {
+            const s = stats[cat.id];
+            if (!s) return null;
+            const rowBg = i % 2 === 0 ? '#0f0f0f' : '#111111';
+            const accColor = s.acc===null?'#555': s.acc>=90?'#22c55e': s.acc>=75?'#eab308':'#ef4444';
+            const errColor = s.err===null?'#555': s.err>30?'#ef4444': s.err>15?'#f97316':'#aaa';
+            return (
+              <tr key={cat.id} style={{ background:rowBg }}>
+                <td style={{ ...tdStyle({ textAlign:'left', paddingLeft:16 }) }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                    <Badge n={cat.num} />
+                    <span style={{ fontWeight: cat.num?600:400, color: cat.num?'#e0e0e0':'#999' }}>{cat.label}</span>
+                  </div>
+                </td>
+                <td style={tdStyle()}>{s.total}</td>
+                <td style={tdStyle()}>{s.pos}</td>
+                <td style={tdStyle()}>{s.neg}</td>
+                <td style={tdStyle({ color: s.unsure>0?'#666':undefined })}>{s.unsure||'—'}</td>
+                <td style={tdStyle({ color: s.failed>0?'#aaa':'#444' })}>{s.failed}</td>
+                <td style={tdStyle({ color: s.fn>0?'#f97316':'#444' })}>{s.fn}</td>
+                <td style={tdStyle({ color: s.fp>0?'#ef4444':'#444' })}>{s.fp}</td>
+                <td style={tdStyle()}>
+                  {s.acc!==null ? <span><span style={{ color:accColor, fontWeight:600 }}>{s.acc.toFixed(1)}%</span>{isSimulatable && <Delta cur={s.acc} base={s.bAcc} isAcc={true}/>}</span> : <span style={{ color:'#444' }}>—</span>}
+                </td>
+                <td style={tdStyle()}>
+                  {s.err!==null ? <span><span style={{ color:errColor, fontWeight: s.err>20?800:400 }}>{s.err.toFixed(1)}%</span>{isSimulatable && <Delta cur={s.err} base={s.bErr} isAcc={false}/>}</span> : <span style={{ color:'#444' }}>—</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============================================================
+// CONFIG PANEL
+// ============================================================
+
+function ConfigPanel({ config, onChange, onReset, impacts = {}, hasMultiplierTagData = true }) {
+  const sec = (label) => (
+    <div style={{ fontSize:10, color:'#555', textTransform:'uppercase', letterSpacing:1, marginTop:20, marginBottom:10, borderBottom:'1px solid #1e1e1e', paddingBottom:6 }}>{label}</div>
+  );
+  const imp = (k) => impacts[k] ?? null;
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <span style={{ fontWeight:700, fontSize:13, color:'#ccc' }}>Coefficients</span>
+        <button onClick={onReset} style={{ fontSize:11, color:'#6366f1', background:'none', border:'1px solid #333', borderRadius:4, padding:'4px 10px', cursor:'pointer' }}>Reset</button>
+      </div>
+      {sec('Underage — SigLIP2')}
+      <SliderRow label="Confidence"   cfgKey="underage_confidence"    value={config.underage_confidence}     min={0}   max={1}   step={0.01}  onChange={onChange} hint="min / (min + adult) ≥ this → block" impact={imp('underage_confidence')} />
+      <SliderRow label="Min Score"    cfgKey="underage_min_score"     value={config.underage_min_score}      min={0}   max={0.1} step={0.001} onChange={onChange} hint="minor < this → always pass"          impact={imp('underage_min_score')} />
+      <SliderRow label="Auto Trigger" cfgKey="auto_trigger_minor_risk" value={config.auto_trigger_minor_risk} min={0}   max={1}   step={0.01}  onChange={onChange} hint="minor ≥ this → always block"        impact={imp('auto_trigger_minor_risk')} />
+      {sec('Underage — LGBM (combined OR)')}
+      <SliderRow label="LGBM Threshold" cfgKey="lgbm_threshold" value={config.lgbm_threshold} min={0.5} max={1} step={0.01} onChange={onChange} hint="LGBM score ≥ this → block (combined with SigLIP2)" impact={imp('lgbm_threshold')} />
+      <SliderRow label="LGBM Enabled"   cfgKey="lgbm_enabled"   value={config.lgbm_enabled}   min={0}   max={1} step={1}    onChange={onChange} hint="1 = SigLIP2 OR LGBM, 0 = SigLIP2 only"              impact={imp('lgbm_enabled')} />
+      {sec('Detection Thresholds')}
+      <SliderRow label="Bestiality"         cfgKey="bestiality_threshold"  value={config.bestiality_threshold}  min={0} max={0.5} step={0.005} onChange={onChange} impact={imp('bestiality_threshold')} />
+      <SliderRow label="Human Waste"        cfgKey="human_waste_threshold" value={config.human_waste_threshold} min={0} max={0.5} step={0.005} onChange={onChange} impact={imp('human_waste_threshold')} />
+      <SliderRow label="Blood"              cfgKey="blood_threshold"       value={config.blood_threshold}       min={0} max={0.5} step={0.005} onChange={onChange} impact={imp('blood_threshold')} />
+      <SliderRow label="Death & Murder"     cfgKey="death_threshold"       value={config.death_threshold}       min={0} max={0.5} step={0.005} onChange={onChange} impact={imp('death_threshold')} />
+      <SliderRow label="Weapons & Military" cfgKey="weapons_threshold"     value={config.weapons_threshold}     min={0} max={0.5} step={0.005} onChange={onChange} impact={imp('weapons_threshold')} />
+      <SliderRow label="Drugs"              cfgKey="drugs_threshold"       value={config.drugs_threshold}       min={0} max={0.5} step={0.005} onChange={onChange} impact={imp('drugs_threshold')} />
+      <SliderRow label="Rape"               cfgKey="rape_threshold"        value={config.rape_threshold}        min={0} max={0.5} step={0.005} onChange={onChange} impact={imp('rape_threshold')} />
+      {sec('Ethnicity Threshold')}
+      <SliderRow label="Label Threshold" cfgKey="label_threshold" value={config.label_threshold} min={0} max={1} step={0.01} onChange={onChange} impact={imp('label_threshold')} />
+      {sec('Tag Weight Multipliers (Underage)')}
+      <SliderRow label=":x20 multiplier" cfgKey="tag_double_bang" value={config.tag_double_bang} min={1} max={100} step={0.5} onChange={onChange} hint='e.g. "underage_adult_with_child:x20" — default ×20' impact={imp('tag_double_bang')} />
+      <SliderRow label=":x5 multiplier"  cfgKey="tag_single_bang" value={config.tag_single_bang} min={1} max={50}  step={0.5} onChange={onChange} hint='e.g. "underage_boy_mature_woman:x5" — default ×5'   impact={imp('tag_single_bang')} />
+      {!hasMultiplierTagData && (
+        <div style={{ marginTop:10, padding:'8px 10px', background:'#2a1a00', border:'1px solid #5a3a00', borderRadius:6, fontSize:11, color:'#f0a040', lineHeight:1.5 }}>
+          ⚠ В тест-данных нет тегов <code style={{color:'#ffd080'}}>:x20</code>/<code style={{color:'#ffd080'}}>:x5</code> — пересчёт мультипликаторов недоступен.<br/>
+          Сгенерируй тест-данные заново через обновлённый пайплайн.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// UPLOAD AREA
+// ============================================================
+
+function UploadArea({ onFile }) {
+  const [dragging, setDragging] = useState(false);
+  const ref = useRef();
+  return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'calc(100vh - 54px)' }}>
+      <div
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]); }}
+        onClick={() => ref.current?.click()}
+        style={{ border:`2px dashed ${dragging?'#6366f1':'#2a2a2a'}`, borderRadius:16, padding:'60px 80px', textAlign:'center', cursor:'pointer', background:dragging?'rgba(99,102,241,0.04)':'#111', transition:'all 0.2s', maxWidth:480 }}
+      >
+        <div style={{ fontSize:48, marginBottom:16 }}>📂</div>
+        <div style={{ fontSize:18, fontWeight:700, marginBottom:8, color:'#ccc' }}>Drop your test JSON file here</div>
+        <div style={{ fontSize:13, color:'#555', lineHeight:1.6 }}>
+          or click to browse<br/>
+          Expects an array of test cases with <code style={{ color:'#6366f1', fontSize:12 }}>variant</code>, <code style={{ color:'#6366f1', fontSize:12 }}>category</code>, and <code style={{ color:'#6366f1', fontSize:12 }}>models</code> fields
+        </div>
+        <input ref={ref} type="file" accept=".json" style={{ display:'none' }}
+          onChange={e => { if (e.target.files[0]) onFile(e.target.files[0]); e.target.value=''; }} />
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// SUMMARY BAR
+// ============================================================
+
+function SummaryBar({ stats, tab }) {
+  const cats = CATEGORIES.filter(c => stats[c.id]);
+  if (!cats.length) return null;
+  let tAcc=0, tErr=0, cAcc=0, cErr=0;
+  for (const cat of cats) {
+    const s = stats[cat.id];
+    if (s.acc!==null){tAcc+=s.acc; cAcc++;}
+    if (s.err!==null){tErr+=s.err; cErr++;}
+  }
+  const avgAcc = cAcc ? tAcc/cAcc : null;
+  const avgErr = cErr ? tErr/cErr : null;
+  const pill = (label, val, color) => (
+    <div style={{ background:'#1a1a1a', border:'1px solid #252525', borderRadius:8, padding:'8px 16px', display:'flex', gap:8, alignItems:'center' }}>
+      <span style={{ fontSize:11, color:'#555' }}>{label}</span>
+      <span style={{ fontSize:20, fontWeight:800, color }}>{val!==null?val.toFixed(1)+'%':'—'}</span>
+    </div>
+  );
+  return (
+    <div style={{ display:'flex', gap:10, marginBottom:20, flexWrap:'wrap' }}>
+      {pill('Avg Accuracy', avgAcc, avgAcc>=85?'#22c55e': avgAcc>=70?'#eab308':'#ef4444')}
+      {pill('Avg Error',    avgErr, avgErr<=10?'#22c55e': avgErr<=25?'#eab308':'#ef4444')}
+      <div style={{ background:'#1a1a1a', border:'1px solid #252525', borderRadius:8, padding:'8px 16px', display:'flex', gap:8, alignItems:'center' }}>
+        <span style={{ fontSize:11, color:'#555' }}>Categories</span>
+        <span style={{ fontSize:20, fontWeight:800, color:'#6366f1' }}>{cats.length}</span>
+      </div>
+      {tab!=='siglip2' && (
+        <div style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:8 }}>
+          <span style={{ fontSize:11, color:'#6366f1' }}>ℹ Threshold simulation available for siglip2 tab only</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// PROFILES MODAL
+// ============================================================
+
+function ProfilesModal({ profiles, currentConfig, currentFile, onApply, onDelete, onSave, onClose }) {
+  const [newName, setNewName]     = useState('');
+  const [linkFile, setLinkFile]   = useState(true);
+  const [saveError, setSaveError] = useState('');
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  const handleSave = () => {
+    const name = newName.trim();
+    if (!name) { setSaveError('Profile name is required.'); return; }
+    onSave(name, linkFile ? currentFile : null);
+    setNewName(''); setSaveError('');
+  };
+
+  const sorted = [...profiles].sort((a,b) => new Date(b.savedAt) - new Date(a.savedAt));
+
+  const btn = (label, onClick, variant='ghost') => {
+    const S = {
+      ghost:   { color:'#777', background:'none', border:'1px solid #2a2a2a' },
+      primary: { color:'#fff', background:'#6366f1', border:'1px solid #6366f1' },
+      danger:  { color:'#ef4444', background:'none', border:'1px solid #2a2a2a' },
+    };
+    return <button onClick={onClick} style={{ fontSize:11, borderRadius:5, padding:'5px 11px', cursor:'pointer', ...S[variant] }}>{label}</button>;
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-box">
+        <div style={{ padding:'16px 20px', borderBottom:'1px solid #222', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <span style={{ fontWeight:700, fontSize:14, color:'#ccc' }}>💾 Config Profiles</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:'#555', fontSize:18, cursor:'pointer' }}>✕</button>
+        </div>
+        <div style={{ overflowY:'auto', flex:1 }}>
+          {sorted.length===0 ? (
+            <div style={{ padding:'40px 20px', textAlign:'center', color:'#444', fontSize:13 }}>No saved profiles yet. Save your current configuration below.</div>
+          ) : sorted.map(p => (
+            <div key={p.id} style={{ padding:'12px 20px', borderBottom:'1px solid #1c1c1c', display:'flex', alignItems:'flex-start', gap:12 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:600, fontSize:13, color:'#ddd', marginBottom:4 }}>{p.name}</div>
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
+                  {p.linkedFile && (
+                    <span style={{ fontSize:10, color:'#6366f1', background:'rgba(99,102,241,0.12)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:4, padding:'1px 7px', maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={p.linkedFile}>📄 {p.linkedFile}</span>
+                  )}
+                  <span style={{ fontSize:10, color:'#444' }}>{formatDate(p.savedAt)}</span>
+                </div>
+              </div>
+              <div style={{ display:'flex', gap:6, flexShrink:0, alignItems:'center' }}>
+                {confirmDel===p.id ? (
+                  <><span style={{ fontSize:11, color:'#ef4444', marginRight:2 }}>Delete?</span>{btn('Yes',()=>{onDelete(p.id);setConfirmDel(null);},'danger')}{btn('No',()=>setConfirmDel(null))}</>
+                ) : (
+                  <>{btn('Apply',()=>onApply(p),'primary')}{btn('Delete',()=>setConfirmDel(p.id),'danger')}</>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ borderTop:'1px solid #222', padding:'16px 20px', flexShrink:0, background:'#131313' }}>
+          <div style={{ fontSize:10, color:'#555', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Save current config</div>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <input type="text" placeholder="Profile name…" value={newName} onChange={e=>{setNewName(e.target.value);setSaveError('');}} onKeyDown={e=>e.key==='Enter'&&handleSave()}
+              style={{ flex:1, background:'#1e1e1e', border:`1px solid ${saveError?'#ef4444':'#333'}`, color:'#e0e0e0', borderRadius:5, padding:'7px 11px', fontSize:13, outline:'none' }} />
+            {btn('Save', handleSave, 'primary')}
+          </div>
+          {saveError && <div style={{ fontSize:11, color:'#ef4444', marginTop:6 }}>{saveError}</div>}
+          {currentFile && (
+            <label style={{ display:'flex', alignItems:'center', gap:7, marginTop:10, cursor:'pointer', fontSize:12, color:'#666' }}>
+              <input type="checkbox" checked={linkFile} onChange={e=>setLinkFile(e.target.checked)} style={{ accentColor:'#6366f1', width:13, height:13 }} />
+              Link to current file: <span style={{ color:'#555', fontStyle:'italic' }}>{currentFile}</span>
+            </label>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// AUTOTUNE MODAL
+// ============================================================
+
+const PRIORITY_OPTIONS = [
+  { id: 'acc', label: '🎯 Max Accuracy', hint: 'Minimise Failed+ (missed violations)' },
+  { id: 'bal', label: '⚖️ Balance',      hint: 'Optimise Accuracy and Error equally' },
+  { id: 'err', label: '🛡 Min Error',    hint: 'Minimise Failed− (false positives)' },
+];
+
+function AutotuneModal({ data, config, onApply, onClose, showToast }) {
+  const tunableCats = CATEGORIES.filter(c =>
+    AUTOTUNE_GRIDS[c.id] && data.some(x => x.category === c.id && x.models?.siglip2)
+  );
+
+  const [catId,    setCatId]    = useState(tunableCats[0]?.id ?? 'underage');
+  const [priority, setPriority] = useState('bal');
+  const [running,  setRunning]  = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [result,   setResult]   = useState(null);
+  const cancelRef = useRef(false);
+
+  // Cancel on unmount
+  useEffect(() => () => { cancelRef.current = true; }, []);
+
+  const handleRun = async () => {
+    cancelRef.current = false;
+    setRunning(true);
+    setProgress(0);
+    setResult(null);
+    const r = await runAutotuneAsync(data, catId, config, priority, setProgress, cancelRef);
+    if (!cancelRef.current) {
+      setResult(r);
+      setRunning(false);
+    }
+  };
+
+  const handleCancel = () => {
+    cancelRef.current = true;
+    setRunning(false);
+    setProgress(0);
+  };
+
+  const catLabel = CATEGORIES.find(c => c.id === catId)?.label ?? catId;
+
+  // Compact param change display
+  const paramChanged = (params, baseConfig) =>
+    params.map(k => {
+      const cur = baseConfig[k];
+      const nxt = params[k]; // actually from result.params object
+      return null; // handled differently below
+    });
+
+  const fmtVal = (v) => typeof v === 'number' ? (v < 1 && v !== 0 ? v.toFixed(3).replace(/0+$/, '').replace(/\.$/, '') : v % 1 === 0 ? v : v.toFixed(1)) : v;
+
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-box wide">
+
+        {/* Header */}
+        <div style={{ padding:'16px 20px', borderBottom:'1px solid #222', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <span style={{ fontWeight:700, fontSize:14, color:'#ccc' }}>⚙️ Autotune</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:'#555', fontSize:18, cursor:'pointer' }}>✕</button>
+        </div>
+
+        {/* Controls */}
+        <div style={{ padding:'16px 20px', borderBottom:'1px solid #1c1c1c', flexShrink:0, background:'#131313' }}>
+          <div style={{ display:'flex', gap:20, flexWrap:'wrap', alignItems:'flex-end' }}>
+
+            {/* Category */}
+            <div style={{ flex:1, minWidth:160 }}>
+              <div style={{ fontSize:10, color:'#555', textTransform:'uppercase', letterSpacing:1, marginBottom:8 }}>Category</div>
+              <select value={catId} onChange={e => { setCatId(e.target.value); setResult(null); }}
+                style={{ width:'100%', background:'#1e1e1e', border:'1px solid #333', color:'#e0e0e0', borderRadius:5, padding:'7px 10px', fontSize:13, outline:'none', cursor:'pointer' }}>
+                {tunableCats.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </div>
+
+            {/* Priority */}
+            <div style={{ flex:2, minWidth:240 }}>
+              <div style={{ fontSize:10, color:'#555', textTransform:'uppercase', letterSpacing:1, marginBottom:8 }}>Optimization Priority</div>
+              <div style={{ display:'flex', gap:6 }}>
+                {PRIORITY_OPTIONS.map(p => (
+                  <button key={p.id} onClick={() => { setPriority(p.id); setResult(null); }}
+                    title={p.hint}
+                    style={{
+                      flex:1, fontSize:11, fontWeight:600, padding:'7px 6px', borderRadius:5, cursor:'pointer',
+                      background: priority===p.id ? 'rgba(99,102,241,0.2)' : 'none',
+                      border: priority===p.id ? '1px solid #6366f1' : '1px solid #2a2a2a',
+                      color: priority===p.id ? '#a5b4fc' : '#666',
+                      whiteSpace:'nowrap',
+                    }}>{p.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Run / Cancel */}
+            {running ? (
+              <button onClick={handleCancel}
+                style={{ padding:'8px 20px', background:'none', border:'1px solid #ef4444', borderRadius:5, color:'#ef4444', fontWeight:700, fontSize:13, cursor:'pointer', flexShrink:0 }}>
+                ✕ Cancel
+              </button>
+            ) : (
+              <button onClick={handleRun}
+                style={{ padding:'8px 20px', background:'#6366f1', border:'none', borderRadius:5, color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer', flexShrink:0 }}>
+                ▶ Run
+              </button>
+            )}
+          </div>
+
+          {/* Progress bar */}
+          {running && (
+            <div style={{ marginTop:12 }}>
+              <div style={{ height:3, background:'#1e1e1e', borderRadius:2, overflow:'hidden' }}>
+                <div style={{ height:'100%', width:`${Math.round(progress*100)}%`, background:'#6366f1', transition:'width 0.1s linear', borderRadius:2 }} />
+              </div>
+              <div style={{ marginTop:5, fontSize:10, color:'#444' }}>
+                {Math.round(progress * 100)}% — searching combinations…
+              </div>
+            </div>
+          )}
+
+          {/* Tuned params hint */}
+          {AUTOTUNE_GRIDS[catId] && (
+            <div style={{ marginTop:10, fontSize:11, color:'#444' }}>
+              Tuning: {AUTOTUNE_GRIDS[catId].params.map(p => <span key={p} style={{ color:'#6366f1', background:'rgba(99,102,241,0.08)', padding:'1px 6px', borderRadius:3, marginRight:4, display:'inline-block' }}>{PARAM_LABELS[p] ?? p}</span>)}
+              {AUTOTUNE_GRIDS[catId] && (() => {
+                const g = AUTOTUNE_GRIDS[catId].grids;
+                const total = AUTOTUNE_GRIDS[catId].params.reduce((acc, k) => acc * (g[k]?.length ?? 1), 1);
+                return <span style={{ color:'#333', marginLeft:6 }}>· {total.toLocaleString()} combinations</span>;
+              })()}
+            </div>
+          )}
+        </div>
+
+        {/* Results */}
+        <div style={{ overflowY:'auto', flex:1, padding:'16px 20px' }}>
+          {!result && !running && (
+            <div style={{ color:'#333', fontSize:13, textAlign:'center', paddingTop:32 }}>
+              Select a category and priority, then press <strong style={{ color:'#555' }}>▶ Run</strong> to find optimal coefficients.
+            </div>
+          )}
+
+          {result && (
+            <>
+              {/* Current stats */}
+              <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center' }}>
+                <span style={{ fontSize:11, color:'#555' }}>Current ({catLabel}):</span>
+                <span style={{ fontSize:12, color:'#aaa' }}>
+                  Accuracy <strong style={{ color:'#22c55e' }}>{result.current.acc !== null ? result.current.acc.toFixed(1)+'%' : '—'}</strong>
+                  &nbsp;·&nbsp;
+                  Error <strong style={{ color:'#ef4444' }}>{result.current.err !== null ? result.current.err.toFixed(1)+'%' : '—'}</strong>
+                </span>
+                <span style={{ marginLeft:'auto', fontSize:10, color:'#333' }}>
+                  Searched {result.totalCombos.toLocaleString()} combos
+                </span>
+              </div>
+
+              {result.results.length === 0 ? (
+                <div style={{ color:'#444', fontSize:13, textAlign:'center', paddingTop:20 }}>No results found. Try a different category or priority.</div>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {result.results.map((r, i) => {
+                    const dAcc = r.acc !== null && result.current.acc !== null ? r.acc - result.current.acc : null;
+                    const dErr = r.err !== null && result.current.err !== null ? r.err - result.current.err : null;
+                    const isImproved = (dAcc !== null && dAcc > 0.05) || (dErr !== null && dErr < -0.05);
+                    // Which params changed vs current config
+                    const changedParams = result.params.filter(k => Math.abs((r.params[k] ?? 0) - (config[k] ?? 0)) > 0.00001);
+
+                    return (
+                      <div key={i} style={{
+                        background: i===0 ? 'rgba(99,102,241,0.05)' : '#111',
+                        border: `1px solid ${i===0 ? 'rgba(99,102,241,0.25)' : '#1e1e1e'}`,
+                        borderRadius:8, padding:'12px 14px',
+                        display:'flex', alignItems:'flex-start', gap:12,
+                      }}>
+                        {/* Rank */}
+                        <div style={{ width:22, height:22, borderRadius:'50%', background: i===0?'#6366f1':'#222', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color: i===0?'#fff':'#555', flexShrink:0, marginTop:1 }}>
+                          {i+1}
+                        </div>
+
+                        {/* Metrics */}
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ display:'flex', gap:16, marginBottom:8, alignItems:'center' }}>
+                            <span style={{ fontSize:14, fontWeight:700 }}>
+                              <span style={{ color:'#22c55e' }}>Acc {r.acc !== null ? r.acc.toFixed(1)+'%' : '—'}</span>
+                              {dAcc !== null && Math.abs(dAcc) >= 0.05 && (
+                                <span style={{ fontSize:11, marginLeft:4, color: dAcc>0?'#22c55e':'#ef4444', fontWeight:600 }}>({dAcc>0?'+':''}{dAcc.toFixed(1)}%)</span>
+                              )}
+                            </span>
+                            <span style={{ fontSize:14, fontWeight:700 }}>
+                              <span style={{ color:'#ef4444' }}>Err {r.err !== null ? r.err.toFixed(1)+'%' : '—'}</span>
+                              {dErr !== null && Math.abs(dErr) >= 0.05 && (
+                                <span style={{ fontSize:11, marginLeft:4, color: dErr<0?'#22c55e':'#ef4444', fontWeight:600 }}>({dErr>0?'+':''}{dErr.toFixed(1)}%)</span>
+                              )}
+                            </span>
+                            <span style={{ fontSize:11, color:'#444' }}>
+                              Failed+ {r.fn} / Failed− {r.fp}
+                            </span>
+                          </div>
+
+                          {/* Changed params */}
+                          {changedParams.length > 0 ? (
+                            <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                              {changedParams.map(k => (
+                                <span key={k} style={{ fontSize:10, background:'#1a1a1a', border:'1px solid #2a2a2a', borderRadius:4, padding:'2px 8px', color:'#888' }}>
+                                  <span style={{ color:'#555' }}>{PARAM_LABELS[k] ?? k}:</span>
+                                  &nbsp;<span style={{ color:'#aaa', textDecoration:'line-through' }}>{fmtVal(config[k])}</span>
+                                  &nbsp;<span style={{ color:'#a5b4fc', fontWeight:700 }}>→ {fmtVal(r.params[k])}</span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ fontSize:10, color:'#333' }}>No parameter changes (already optimal)</span>
+                          )}
+                        </div>
+
+                        {/* Apply button */}
+                        <button
+                          onClick={() => {
+                            onApply(r.params);
+                            showToast(`Autotune result #${i+1} applied`, '⚙️');
+                            onClose();
+                          }}
+                          style={{ fontSize:11, fontWeight:700, padding:'6px 14px', borderRadius:5, cursor:'pointer', flexShrink:0,
+                            background: i===0?'#6366f1':'none',
+                            border: i===0?'1px solid #6366f1':'1px solid #333',
+                            color: i===0?'#fff':'#777',
+                          }}>
+                          Apply
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// MAIN APP
+// ============================================================
+
+function App() {
+  const [data, setData]               = useState(null);
+  const [filename, setFilename]       = useState('');
+  const [tab, setTab]                 = useState('siglip2');
+  const [config, setConfig]           = useState({ ...DEFAULT_CONFIG });
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [profiles, setProfiles]       = useState(() => loadProfiles());
+  const [showProfiles, setShowProfiles] = useState(false);
+  const [showAutotune, setShowAutotune] = useState(false);
+  const [toast, setToast]             = useState(null);
+
+  const showToast = useCallback((message, icon) => {
+    setToast({ message, icon, key: Date.now() });
+  }, []);
+
+  const handleFile = useCallback((file) => {
+    const name = file.name;
+    setFilename(name);
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const json = JSON.parse(e.target.result);
+        setData(Array.isArray(json) ? json : [json]);
+        const current = loadProfiles();
+        const linked = current.filter(p => p.linkedFile === name);
+        if (linked.length === 1) {
+          setConfig({ ...DEFAULT_CONFIG, ...linked[0].config });
+          showToast(`Profile "${linked[0].name}" auto-loaded`, '⚡');
+        } else if (linked.length > 1) {
+          showToast(`${linked.length} profiles found for this file — open Profiles to choose`, '📋');
+        }
+      } catch {
+        alert('Could not parse JSON. Please check the file format.');
+      }
+    };
+    reader.readAsText(file);
+  }, [showToast]);
+
+  const updateConfig = useCallback((key, rawVal) => {
+    const val = parseFloat(rawVal);
+    if (!isNaN(val)) setConfig(prev => ({ ...prev, [key]: val }));
+  }, []);
+
+  const resetConfig = useCallback(() => setConfig({ ...DEFAULT_CONFIG }), []);
+
+  const handleApplyProfile = useCallback((profile) => {
+    setConfig({ ...DEFAULT_CONFIG, ...profile.config });
+    setShowProfiles(false);
+    showToast(`Profile "${profile.name}" applied`, '✅');
+  }, [showToast]);
+
+  const handleDeleteProfile = useCallback((id) => {
+    setProfiles(prev => { const next = prev.filter(p => p.id !== id); saveProfiles(next); return next; });
+  }, []);
+
+  const handleSaveProfile = useCallback((name, linkedFile) => {
+    const profile = createProfile(name, linkedFile, config);
+    setProfiles(prev => { const next = [profile, ...prev]; saveProfiles(next); return next; });
+    showToast(`Profile "${name}" saved`, '💾');
+  }, [config, showToast]);
+
+  // Autotune applies only the tuned params, leaving the rest of config intact
+  const handleAutotuneApply = useCallback((tuned) => {
+    setConfig(prev => ({ ...prev, ...tuned }));
+  }, []);
+
+  const stats = useMemo(() => {
+    if (!data) return {};
+    return computeStats(data, tab, config, DEFAULT_CONFIG);
+  }, [data, tab, config]);
+
+  // Per-slider isolated impact vs DEFAULT_CONFIG (siglip2 only)
+  const sliderImpacts = useMemo(() => {
+    if (!data) return {};
+    return computeSliderImpacts(data, config);
+  }, [data, config]);
+
+  // True when at least one underage item has :xN-tagged labels stored.
+  // Old test data (generated before the pipeline fix) may not have them.
+  const hasMultiplierTagData = useMemo(() => {
+    if (!data) return true; // no data yet — don't show warning prematurely
+    return data.some(item => {
+      const ul = item.models?.siglip2?.details?.underage?.labels?.underage;
+      return ul && Object.keys(ul).some(k => /:x\d/.test(k));
+    });
+  }, [data]);
+
+  const isSimulatable = tab === 'siglip2';
+  const totalCases = data ? data.length : 0;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', height:'100vh', overflow:'hidden' }}>
+
+      {/* ── Header ── */}
+      <div style={{ display:'flex', alignItems:'center', gap:12, padding:'0 20px', height:54, background:'#111', borderBottom:'1px solid #1e1e1e', flexShrink:0 }}>
+        <span style={{ fontSize:16, fontWeight:800, color:'#6366f1', letterSpacing:-0.3 }}>SigLIP Threshold Simulator</span>
+        {filename && (
+          <span style={{ fontSize:11, color:'#555', background:'#1a1a1a', border:'1px solid #252525', padding:'3px 9px', borderRadius:5 }}>
+            📄 {filename} · {totalCases} cases
+          </span>
+        )}
+        <div style={{ marginLeft:'auto', display:'flex', gap:8, alignItems:'center' }}>
+
+          {/* Autotune — only when siglip2 data loaded */}
+          {data && isSimulatable && (
+            <button onClick={() => setShowAutotune(true)}
+              style={{ fontSize:11, color:'#facc15', background:'none', border:'1px solid #2a2a2a', borderRadius:4, padding:'4px 12px', cursor:'pointer', display:'flex', alignItems:'center', gap:5 }}>
+              ⚙️ Autotune
+            </button>
+          )}
+
+          {/* Profiles */}
+          <button onClick={() => setShowProfiles(true)}
+            style={{ fontSize:11, color: profiles.length>0?'#a5b4fc':'#555', background:'none', border:'1px solid #2a2a2a', borderRadius:4, padding:'4px 12px', cursor:'pointer', display:'flex', alignItems:'center', gap:5 }}>
+            💾 Profiles
+            {profiles.length > 0 && (
+              <span style={{ background:'#6366f1', color:'#fff', borderRadius:10, fontSize:10, fontWeight:700, padding:'1px 6px', minWidth:18, textAlign:'center' }}>{profiles.length}</span>
+            )}
+          </button>
+
+          {data && isSimulatable && (
+            <button onClick={resetConfig}
+              style={{ fontSize:11, color:'#6366f1', background:'none', border:'1px solid #2a2a2a', borderRadius:4, padding:'4px 12px', cursor:'pointer' }}>
+              Reset
+            </button>
+          )}
+          {data && (
+            <button onClick={() => setSidebarOpen(p => !p)}
+              style={{ fontSize:11, color:'#666', background:'none', border:'1px solid #2a2a2a', borderRadius:4, padding:'4px 12px', cursor:'pointer' }}>
+              {sidebarOpen ? '← Hide panel' : 'Show panel →'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Body ── */}
+      <div style={{ display:'flex', flex:1, overflow:'hidden' }}>
+        {data && isSimulatable && sidebarOpen && (
+          <div style={{ width:272, flexShrink:0, background:'#111', borderRight:'1px solid #1e1e1e', overflowY:'auto', padding:'16px 14px' }}>
+            <ConfigPanel config={config} onChange={updateConfig} onReset={resetConfig} impacts={sliderImpacts} hasMultiplierTagData={hasMultiplierTagData} />
+          </div>
+        )}
+        <div style={{ flex:1, overflowY:'auto', padding: data?20:0 }}>
+          {!data
+            ? <UploadArea onFile={handleFile} />
+            : <>
+                <div style={{ display:'flex', gap:0, marginBottom:20, borderBottom:'1px solid #1e1e1e' }}>
+                  {TABS.map(t => (
+                    <button key={t} onClick={() => setTab(t)} style={{ padding:'8px 18px', background:'none', border:'none', cursor:'pointer', fontSize:13, fontWeight:500, color: tab===t?'#6366f1':'#555', borderBottom: tab===t?'2px solid #6366f1':'2px solid transparent' }}>
+                      {t}
+                    </button>
+                  ))}
+                  <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', fontSize:11, color:'#3a3a3a', paddingRight:4 }}>
+                    {isSimulatable ? '⚡ Live simulation' : 'Static results'}
+                  </div>
+                </div>
+                <SummaryBar stats={stats} tab={tab} />
+                <div style={{ background:'#111', border:'1px solid #1e1e1e', borderRadius:8, overflow:'hidden' }}>
+                  <StatsTable stats={stats} isSimulatable={isSimulatable} />
+                </div>
+                {isSimulatable && (
+                  <div style={{ marginTop:14, fontSize:11, color:'#333', lineHeight:1.7 }}>
+                    <span style={{ color:'#22c55e', fontWeight:700 }}>Green</span> / <span style={{ color:'#ef4444', fontWeight:700 }}>Red</span> deltas show change vs baseline (default thresholds).
+                    &nbsp;·&nbsp; <span style={{ color:'#555' }}>Uncertain cases counted in Total but excluded from Accuracy / Error.</span>
+                    &nbsp;·&nbsp; <span style={{ color:'#555' }}>Failed+ = missed violations (↑ hurts Accuracy). Failed− = false alarms (↑ hurts Error).</span>
+                  </div>
+                )}
+              </>
+          }
+        </div>
+      </div>
+
+      {/* ── Modals ── */}
+      {showProfiles && (
+        <ProfilesModal
+          profiles={profiles} currentConfig={config} currentFile={filename}
+          onApply={handleApplyProfile} onDelete={handleDeleteProfile}
+          onSave={handleSaveProfile} onClose={() => setShowProfiles(false)}
+        />
+      )}
+      {showAutotune && data && (
+        <AutotuneModal
+          data={data} config={config}
+          onApply={handleAutotuneApply}
+          onClose={() => setShowAutotune(false)}
+          showToast={showToast}
+        />
+      )}
+
+      {/* ── Toast ── */}
+      {toast && <Toast key={toast.key} message={toast.message} icon={toast.icon} onDone={() => setToast(null)} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

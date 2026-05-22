@@ -1,0 +1,10 @@
+{
+  "version": "v11s80",
+  "parent": "v11",
+  "note": "V11 pruned to top-80 features by gain",
+  "top_n_target": 80,
+  "n_features": 80,
+  "cv_auc": 0.9054234560911814,
+  "cv_std": 0.008236159251988947,
+  "trained_at": "2026-05-21T17:45:03.853417"
+}

@@ -1,0 +1,12 @@
+{
+  "version": "v10",
+  "cv_auc": 0.8877,
+  "cv_std": 0.0144,
+  "n_samples": 3135,
+  "n_features": 510,
+  "no_underage_features": 137,
+  "blocking_rule": "lgbm_score >= 0.45 OR minor >= 0.72",
+  "tag_set": "tags.json (867 tags)",
+  "ls_rescored": true,
+  "trained_at": "2026-05-21T09:49:41.388203"
+}

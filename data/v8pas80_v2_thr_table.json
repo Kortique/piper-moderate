@@ -1,0 +1,152 @@
+{
+  "model": "V8pas80-v2",
+  "auc": 0.9737794427689817,
+  "counts": {
+    "total": 2212,
+    "child": 283,
+    "teen": 545,
+    "adult": 1384
+  },
+  "rows": [
+    {
+      "thr": 0.1,
+      "child_block": 283,
+      "child_recall": 1.0,
+      "teen_block": 545,
+      "teen_recall": 1.0,
+      "adult_fp": 996,
+      "adult_fpr": 0.7196531791907514,
+      "all_pass": false
+    },
+    {
+      "thr": 0.15,
+      "child_block": 282,
+      "child_recall": 0.9964664310954063,
+      "teen_block": 535,
+      "teen_recall": 0.981651376146789,
+      "adult_fp": 574,
+      "adult_fpr": 0.4147398843930636,
+      "all_pass": false
+    },
+    {
+      "thr": 0.2,
+      "child_block": 281,
+      "child_recall": 0.9929328621908127,
+      "teen_block": 513,
+      "teen_recall": 0.9412844036697248,
+      "adult_fp": 297,
+      "adult_fpr": 0.21459537572254336,
+      "all_pass": false
+    },
+    {
+      "thr": 0.25,
+      "child_block": 280,
+      "child_recall": 0.9893992932862191,
+      "teen_block": 484,
+      "teen_recall": 0.8880733944954129,
+      "adult_fp": 132,
+      "adult_fpr": 0.0953757225433526,
+      "all_pass": true
+    },
+    {
+      "thr": 0.28,
+      "child_block": 277,
+      "child_recall": 0.9787985865724381,
+      "teen_block": 457,
+      "teen_recall": 0.8385321100917431,
+      "adult_fp": 84,
+      "adult_fpr": 0.06069364161849711,
+      "all_pass": true
+    },
+    {
+      "thr": 0.3,
+      "child_block": 276,
+      "child_recall": 0.9752650176678446,
+      "teen_block": 443,
+      "teen_recall": 0.8128440366972477,
+      "adult_fp": 54,
+      "adult_fpr": 0.03901734104046243,
+      "all_pass": true
+    },
+    {
+      "thr": 0.32,
+      "child_block": 276,
+      "child_recall": 0.9752650176678446,
+      "teen_block": 423,
+      "teen_recall": 0.7761467889908257,
+      "adult_fp": 41,
+      "adult_fpr": 0.029624277456647398,
+      "all_pass": false
+    },
+    {
+      "thr": 0.35,
+      "child_block": 273,
+      "child_recall": 0.9646643109540636,
+      "teen_block": 399,
+      "teen_recall": 0.7321100917431193,
+      "adult_fp": 23,
+      "adult_fpr": 0.016618497109826588,
+      "all_pass": false
+    },
+    {
+      "thr": 0.4,
+      "child_block": 272,
+      "child_recall": 0.9611307420494699,
+      "teen_block": 358,
+      "teen_recall": 0.6568807339449542,
+      "adult_fp": 16,
+      "adult_fpr": 0.011560693641618497,
+      "all_pass": false
+    },
+    {
+      "thr": 0.45,
+      "child_block": 270,
+      "child_recall": 0.9540636042402827,
+      "teen_block": 310,
+      "teen_recall": 0.5688073394495413,
+      "adult_fp": 7,
+      "adult_fpr": 0.0050578034682080926,
+      "all_pass": false
+    },
+    {
+      "thr": 0.5,
+      "child_block": 262,
+      "child_recall": 0.9257950530035336,
+      "teen_block": 277,
+      "teen_recall": 0.5082568807339449,
+      "adult_fp": 2,
+      "adult_fpr": 0.001445086705202312,
+      "all_pass": false
+    },
+    {
+      "thr": 0.55,
+      "child_block": 259,
+      "child_recall": 0.9151943462897526,
+      "teen_block": 236,
+      "teen_recall": 0.43302752293577984,
+      "adult_fp": 2,
+      "adult_fpr": 0.001445086705202312,
+      "all_pass": false
+    },
+    {
+      "thr": 0.6,
+      "child_block": 254,
+      "child_recall": 0.8975265017667845,
+      "teen_block": 204,
+      "teen_recall": 0.3743119266055046,
+      "adult_fp": 1,
+      "adult_fpr": 0.000722543352601156,
+      "all_pass": false
+    },
+    {
+      "thr": 0.7,
+      "child_block": 244,
+      "child_recall": 0.8621908127208481,
+      "teen_block": 145,
+      "teen_recall": 0.26605504587155965,
+      "adult_fp": 0,
+      "adult_fpr": 0.0,
+      "all_pass": false
+    }
+  ]
+}
