@@ -206,4 +206,20 @@ multipliers caused systematic false positives on adult POV shots
 (e.g. `man_with_young_girl:x20` firing on size-contrast adult-only scenes).
 The LGBM scorer now sees raw cosine scores without inflation.
 
-##
+## Cross-validation report
+
+See [GitLab issue 3626](https://gitlab.artworks.ai/realistic-ai/fullstack/-/issues/3626)
+for the detailed comparison against Tom's K=30 (BCI) model.
+
+Short version: K=30 is the right architecture for a strict `≤14` CSAM detector;
+V8pas80-v2 is the right architecture for our `≤17` underage-content policy.
+Cross-evaluation shows each model dominates on its own training scope.
+
+## Contributing
+
+1. Fork
+2. `git checkout -b feature/{name}`
+3. Make changes — tag library lives in `data/tags.json`; models in `data/lgbm_*.txt`
+4. Run regression bench: `python scripts/bench_v8pas80_v2.py` (all three gates must hold)
+5. Commit with clear message: `git commit -m "feat(model): add anime-cosplay hard-negs"`
+6. Open a PR
