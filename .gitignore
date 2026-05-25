@@ -1,0 +1,67 @@
+# Secrets
+.env
+docs/credentials.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# SQLite DB and its derivatives
+gallery.db
+gallery.db-shm
+gallery.db-wal
+gallery.db.bak*
+backups/
+
+# Whitelist approach for data/: ignore everything by default,
+# then explicitly re-include inference artifacts and shared meta.
+data/*
+!data/lgbm_*
+!data/k30
+!data/k30/**
+!data/v11_test_split.json
+!data/thresholds.json
+!data/tags.json
+!data/*.js
+# Even inside the whitelisted dirs, drop noisy backup blobs:
+data/k30/*.bak
+data/k30/*.bak.json
+data/lgbm_*.bak
+
+# Editor pre-edit snapshots (created automatically when patching gallery_server.py)
+*.PRE_*
+*.broken*
+*.pre_*
+*.truncated_backup
+*.tmp
+
+# Logs and Linux-mount cache artifacts
+*.log
+logs/
+.fuse_hidden*
+
+# Per-run benchmark outputs at repo root — kept locally only
+results/
+*.xlsx
+*.pptx
+blood_*_results.json
+scan_*_results.json
+siglip2_*_results.json
+fp_*.txt
+pipeline_v*.json
+qwen3_age_results.json*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
