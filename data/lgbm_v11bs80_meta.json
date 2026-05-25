@@ -1,0 +1,192 @@
+{
+  "version": "v11bs80",
+  "parent": "v11b",
+  "note": "V11 retrained with explicit 80/20 stratified holdout split (SEED=1337). Multi-seed lgb training. test_* below are HONEST out-of-sample metrics.",
+  "split_seed": 1337,
+  "lgb_seeds": [
+    1,
+    42,
+    314
+  ],
+  "split": {
+    "train_base": 2469,
+    "train_with_hardneg": 2540,
+    "test": 618,
+    "train_by_label": {
+      "child": 308,
+      "teen": 679,
+      "adult": 1482
+    },
+    "test_by_label": {
+      "child": 77,
+      "teen": 170,
+      "adult": 371
+    }
+  },
+  "multi_seed_full": {
+    "auc": {
+      "mean": 0.8820672872311404,
+      "std": 0.0019522922828526426
+    },
+    "child_recall": {
+      "mean": 0.948051948051948,
+      "std": 0.0
+    },
+    "teen_recall": {
+      "mean": 0.7137254901960784,
+      "std": 0.011091871077436
+    },
+    "adult_fpr": {
+      "mean": 0.20664869721473492,
+      "std": 0.004581329302419391
+    },
+    "per_seed": [
+      {
+        "seed": 1,
+        "auc": 0.8834641029278567,
+        "child_recall": 0.948051948051948,
+        "teen_recall": 0.7294117647058823,
+        "adult_fpr": 0.20485175202156333,
+        "counts": {
+          "n_child": 77,
+          "n_teen": 170,
+          "n_adult": 371,
+          "blk_child": 73,
+          "blk_teen": 124,
+          "blk_adult": 76
+        }
+      },
+      {
+        "seed": 42,
+        "auc": 0.8793063937055994,
+        "child_recall": 0.948051948051948,
+        "teen_recall": 0.7058823529411765,
+        "adult_fpr": 0.21293800539083557,
+        "counts": {
+          "n_child": 77,
+          "n_teen": 170,
+          "n_adult": 371,
+          "blk_child": 73,
+          "blk_teen": 120,
+          "blk_adult": 79
+        }
+      },
+      {
+        "seed": 314,
+        "auc": 0.8834313650599649,
+        "child_recall": 0.948051948051948,
+        "teen_recall": 0.7058823529411765,
+        "adult_fpr": 0.20215633423180593,
+        "counts": {
+          "n_child": 77,
+          "n_teen": 170,
+          "n_adult": 371,
+          "blk_child": 73,
+          "blk_teen": 120,
+          "blk_adult": 75
+        }
+      }
+    ]
+  },
+  "multi_seed_slim": {
+    "auc": {
+      "mean": 0.8785570602849649,
+      "std": 0.003446158693423237
+    },
+    "child_recall": {
+      "mean": 0.9393939393939394,
+      "std": 0.012244273267299528
+    },
+    "teen_recall": {
+      "mean": 0.711764705882353,
+      "std": 0.012707334702760515
+    },
+    "adult_fpr": {
+      "mean": 0.20844564240790656,
+      "std": 0.0025412642630244344
+    },
+    "per_seed": [
+      {
+        "seed": 1,
+        "auc": 0.8825256173816253,
+        "child_recall": 0.948051948051948,
+        "teen_recall": 0.7176470588235294,
+        "adult_fpr": 0.20485175202156333,
+        "counts": {
+          "n_child": 77,
+          "n_teen": 170,
+          "n_adult": 371,
+          "blk_child": 73,
+          "blk_teen": 122,
+          "blk_adult": 76
+        }
+      },
+      {
+        "seed": 42,
+        "auc": 0.8790226655172039,
+        "child_recall": 0.948051948051948,
+        "teen_recall": 0.7235294117647059,
+        "adult_fpr": 0.21024258760107817,
+        "counts": {
+          "n_child": 77,
+          "n_teen": 170,
+          "n_adult": 371,
+          "blk_child": 73,
+          "blk_teen": 123,
+          "blk_adult": 78
+        }
+      },
+      {
+        "seed": 314,
+        "auc": 0.8741228979560658,
+        "child_recall": 0.922077922077922,
+        "teen_recall": 0.6941176470588235,
+        "adult_fpr": 0.21024258760107817,
+        "counts": {
+          "n_child": 77,
+          "n_teen": 170,
+          "n_adult": 371,
+          "blk_child": 71,
+          "blk_teen": 118,
+          "blk_adult": 78
+        }
+      }
+    ]
+  },
+  "by_source_slim": {
+    "ls": {
+      "n": 438,
+      "auc": 0.8665367092050683,
+      "child_recall": 0.9074074074074074,
+      "teen_recall": 0.5728155339805825,
+      "adult_fpr": 0.1601423487544484,
+      "counts": {
+        "n_child": 54,
+        "n_teen": 103,
+        "n_adult": 281,
+        "blk_child": 49,
+        "blk_teen": 59,
+        "blk_adult": 45
+      }
+    },
+    "grafana": {
+      "n": 180,
+      "auc": 0.8866666666666667,
+      "child_recall": 0.9565217391304348,
+      "teen_recall": 0.8805970149253731,
+      "adult_fpr": 0.36666666666666664,
+      "counts": {
+        "n_child": 23,
+        "n_teen": 67,
+        "n_adult": 90,
+        "blk_child": 22,
+        "blk_teen": 59,
+        "blk_adult": 33
+      }
+    }
+  },
+  "compare_to_v11s80_cv_auc": 0.9054234560911814,
+  "n_features_full": 491,
+  "n_features_slim": 80,
+  "trained_at": "2026-05-23T06:54:56.394308"
+}

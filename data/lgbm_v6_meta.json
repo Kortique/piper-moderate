@@ -1,0 +1,9 @@
+{
+  "version": "v6",
+  "note": "Inferred CV AUC computed retroactively from qwen3 LS + confirmed grafana_pool",
+  "cv_auc": 0.8793939316715514,
+  "cv_std": 0.012499891841785625,
+  "n_samples": 2903,
+  "n_features": 312,
+  "computed_at": "2026-05-22"
+}

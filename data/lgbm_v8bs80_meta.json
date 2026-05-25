@@ -1,0 +1,160 @@
+{
+  "version": "v8bs80",
+  "parent": "v8b (V8pas80-v2 re-trained excluding v11_test_split)",
+  "split": "data/v11_test_split.json (SEED=1337, stratified 80/20 by V11 training data)",
+  "n_train": 1884,
+  "n_test": 438,
+  "test_source_breakdown": {
+    "ls": 438,
+    "grafana": 0
+  },
+  "note": "V8 trains on qwen3 LS only \u2014 the universal holdout contains 438 LS items (V8 saw these in original training; this re-train excludes them).",
+  "multi_seed_full": {
+    "auc": {
+      "mean": 0.8425172458084941,
+      "std": 0.004093986072915515
+    },
+    "child_recall": {
+      "mean": 0.9135802469135803,
+      "std": 0.008729713347982055
+    },
+    "teen_recall": {
+      "mean": 0.5889967637540453,
+      "std": 0.01650168127376305
+    },
+    "adult_fpr": {
+      "mean": 0.18386714116251482,
+      "std": 0.007312472126890837
+    },
+    "per_seed": [
+      {
+        "seed": 1,
+        "auc": 0.8466350839812317,
+        "child_recall": 0.9259259259259259,
+        "teen_recall": 0.6116504854368932,
+        "adult_fpr": 0.19217081850533807,
+        "counts": {
+          "n_child": 54,
+          "n_teen": 103,
+          "n_adult": 281,
+          "blk_child": 50,
+          "blk_teen": 63,
+          "blk_adult": 54
+        }
+      },
+      {
+        "seed": 42,
+        "auc": 0.8439830450846612,
+        "child_recall": 0.9074074074074074,
+        "teen_recall": 0.5825242718446602,
+        "adult_fpr": 0.17437722419928825,
+        "counts": {
+          "n_child": 54,
+          "n_teen": 103,
+          "n_adult": 281,
+          "blk_child": 49,
+          "blk_teen": 60,
+          "blk_adult": 49
+        }
+      },
+      {
+        "seed": 314,
+        "auc": 0.8369336083595893,
+        "child_recall": 0.9074074074074074,
+        "teen_recall": 0.5728155339805825,
+        "adult_fpr": 0.18505338078291814,
+        "counts": {
+          "n_child": 54,
+          "n_teen": 103,
+          "n_adult": 281,
+          "blk_child": 49,
+          "blk_teen": 59,
+          "blk_adult": 52
+        }
+      }
+    ]
+  },
+  "multi_seed_slim": {
+    "auc": {
+      "mean": 0.8415274535137627,
+      "std": 0.004231078721433822
+    },
+    "child_recall": {
+      "mean": 0.9197530864197532,
+      "std": 0.008729713347982055
+    },
+    "teen_recall": {
+      "mean": 0.5954692556634303,
+      "std": 0.009153485840602554
+    },
+    "adult_fpr": {
+      "mean": 0.20166073546856467,
+      "std": 0.001677596159398697
+    },
+    "per_seed": [
+      {
+        "seed": 1,
+        "auc": 0.8474737629485233,
+        "child_recall": 0.9074074074074074,
+        "teen_recall": 0.6019417475728155,
+        "adult_fpr": 0.20284697508896798,
+        "counts": {
+          "n_child": 54,
+          "n_teen": 103,
+          "n_adult": 281,
+          "blk_child": 49,
+          "blk_teen": 62,
+          "blk_adult": 57
+        }
+      },
+      {
+        "seed": 42,
+        "auc": 0.8379762903189247,
+        "child_recall": 0.9259259259259259,
+        "teen_recall": 0.5825242718446602,
+        "adult_fpr": 0.199288256227758,
+        "counts": {
+          "n_child": 54,
+          "n_teen": 103,
+          "n_adult": 281,
+          "blk_child": 50,
+          "blk_teen": 60,
+          "blk_adult": 56
+        }
+      },
+      {
+        "seed": 314,
+        "auc": 0.83913230727384,
+        "child_recall": 0.9259259259259259,
+        "teen_recall": 0.6019417475728155,
+        "adult_fpr": 0.20284697508896798,
+        "counts": {
+          "n_child": 54,
+          "n_teen": 103,
+          "n_adult": 281,
+          "blk_child": 50,
+          "blk_teen": 62,
+          "blk_adult": 57
+        }
+      }
+    ]
+  },
+  "by_source_slim": {
+    "ls": {
+      "n": 438,
+      "auc": 0.83913230727384,
+      "child_recall": 0.9259259259259259,
+      "teen_recall": 0.6019417475728155,
+      "adult_fpr": 0.20284697508896798,
+      "counts": {
+        "n_child": 54,
+        "n_teen": 103,
+        "n_adult": 281,
+        "blk_child": 50,
+        "blk_teen": 62,
+        "blk_adult": 57
+      }
+    }
+  },
+  "trained_at": "2026-05-23T06:55:37.917049"
+}

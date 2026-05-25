@@ -1,0 +1,114 @@
+{
+  "version": "v6b",
+  "parent": "v6 (V6 LGBM re-trained excluding v11_test_split)",
+  "split": "data/v11_test_split.json (SEED=1337, stratified 80/20 by V11 training data)",
+  "n_train": 2326,
+  "n_test": 576,
+  "test_source_breakdown": {
+    "ls": 437,
+    "grafana": 139
+  },
+  "test_label_breakdown": {
+    "child": 74,
+    "teen": 159,
+    "adult": 343
+  },
+  "multi_seed": {
+    "auc": {
+      "mean": 0.8727211301442711,
+      "std": 0.0027205777027888476
+    },
+    "child_recall": {
+      "mean": 0.936936936936937,
+      "std": 0.006370331362040956
+    },
+    "teen_recall": {
+      "mean": 0.6771488469601676,
+      "std": 0.002964808306861834
+    },
+    "adult_fpr": {
+      "mean": 0.20699708454810495,
+      "std": 0.002380456504162468
+    },
+    "per_seed": [
+      {
+        "seed": 1,
+        "auc": 0.8755364806866954,
+        "child_recall": 0.9324324324324325,
+        "teen_recall": 0.6729559748427673,
+        "adult_fpr": 0.20408163265306123,
+        "counts": {
+          "n_child": 74,
+          "n_teen": 159,
+          "n_adult": 343,
+          "blk_child": 69,
+          "blk_teen": 107,
+          "blk_adult": 70
+        }
+      },
+      {
+        "seed": 42,
+        "auc": 0.8690424054355035,
+        "child_recall": 0.9324324324324325,
+        "teen_recall": 0.6792452830188679,
+        "adult_fpr": 0.20699708454810495,
+        "counts": {
+          "n_child": 74,
+          "n_teen": 159,
+          "n_adult": 343,
+          "blk_child": 69,
+          "blk_teen": 108,
+          "blk_adult": 71
+        }
+      },
+      {
+        "seed": 314,
+        "auc": 0.8735845043106145,
+        "child_recall": 0.9459459459459459,
+        "teen_recall": 0.6792452830188679,
+        "adult_fpr": 0.2099125364431487,
+        "counts": {
+          "n_child": 74,
+          "n_teen": 159,
+          "n_adult": 343,
+          "blk_child": 70,
+          "blk_teen": 108,
+          "blk_adult": 72
+        }
+      }
+    ]
+  },
+  "by_source": {
+    "grafana": {
+      "n": 139,
+      "auc": 0.8493925429409301,
+      "child_recall": 1.0,
+      "teen_recall": 0.8245614035087719,
+      "adult_fpr": 0.41935483870967744,
+      "counts": {
+        "n_child": 20,
+        "n_teen": 57,
+        "n_adult": 62,
+        "blk_child": 20,
+        "blk_teen": 47,
+        "blk_adult": 26
+      }
+    },
+    "ls": {
+      "n": 437,
+      "auc": 0.8728442376129208,
+      "child_recall": 0.9259259259259259,
+      "teen_recall": 0.5980392156862745,
+      "adult_fpr": 0.16370106761565836,
+      "counts": {
+        "n_child": 54,
+        "n_teen": 102,
+        "n_adult": 281,
+        "blk_child": 50,
+        "blk_teen": 61,
+        "blk_adult": 46
+      }
+    }
+  },
+  "trained_at": "2026-05-23T06:55:46.016213"
+}
