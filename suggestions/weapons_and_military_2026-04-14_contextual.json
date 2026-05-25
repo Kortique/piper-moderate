@@ -1,0 +1,110 @@
+{
+  "category": "weapons_and_military",
+  "date": "2026-04-14",
+  "model": "x-ai/grok-4.1-fast",
+  "context": {
+    "threshold_analysis": {
+      "min_positive": 0.01409,
+      "max_failing_negative": 0.96966,
+      "gap": -0.9555699999999999,
+      "perfect_threshold_possible": false,
+      "suggested_threshold": null,
+      "all_pos_sorted": [
+        0.01409,
+        0.02458,
+        0.03347,
+        0.04488,
+        0.05126,
+        0.07223,
+        0.07251,
+        0.24583,
+        0.32083,
+        0.43144,
+        0.56201,
+        0.63395
+      ],
+      "all_neg_sorted": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0001,
+        0.0012,
+        0.02087,
+        0.96966
+      ]
+    },
+    "changelog_entries": 17,
+    "total_category_items": 22
+  },
+  "stats": {
+    "analyzed": 2,
+    "success": 2,
+    "errors": 0
+  },
+  "results": [
+    {
+      "item_id": "696",
+      "image_url": "https://fsn1.your-objectstorage.com/artworks-assets/test-1374.jpg",
+      "type": "negative",
+      "current_risk": 0.96966,
+      "suggestion": {
+        "analysis": "The image shows a cheap black plastic toy cap gun revolver (snub-nose style) lying on a carpeted floor. Key visual features include a short black barrel with orange tip plug, prominent orange trigger and trigger guard, black plastic frame with '5 STAR' printed label on the side, textured black plastic grips, visible plastic molding around the cylinder, and overall toy-like shiny plastic finish. It triggers false positives because the general black revolver shape (cylinder, short barrel, grips) closely resembles real handguns, causing high similarity scores for weapons_pistol (0.9104) due to generic pistol-like form despite revolver cylinder, weapons_revolver (0.6589) due to clear cylinder and revolver profile, and low scores for weapons_glock (0.0055, no polymer frame/slide match) and weapons_shotgun (0.0011, no long barrel/pump). The 'real metal/no plastic/orange' qualifiers in prompts reduce but do not eliminate shape-based matches.",
+        "changelog_review": "Last round's improvements to weapons_pistol and weapons_revolver added 'real metal', model examples (glock/beretta, smith & wesson .44), and 'no orange tips/plastic' clauses, which likely lowered scores from prior versions but insufficiently for this toy's strong shape match. Addition of no_weapon_toy_revolver perfectly describes this image (plastic toy revolver with orange tip/trigger/plastic grips) but ineffective as counter-tags do not subtract from positive risk. weapons_glock addition fired minimally (good). Removal of broad weapons_firearm helped specificity elsewhere. Net: positives still overfire on detailed toys.",
+        "threshold_recommendation": {
+          "suggested_threshold": 0.01,
+          "reasoning": "Cannot raise threshold without missing lowest positive (id=694 risk=0.01409); must fix FPs first to create gap. Keep current to block all current positives."
+        },
+        "improve_existing": [
+          {
+            "key": "weapons_pistol",
+            "old_description": "a real metal black pistol like glock or beretta, no orange tips or plastic toy indicators",
+            "new_description": "photorealistic semi-automatic pistol glock 17 or beretta 92fs, serrated metal slide, polymer or metal frame with finger grooves, exposed ejection port, no rotating cylinder or orange plastic parts"
+          },
+          {
+            "key": "weapons_revolver",
+            "old_description": "a real metal magnum revolver like smith & wesson .44, no plastic construction or orange safety features",
+            "new_description": "photorealistic smith & wesson model 29 .44 magnum revolver, blued steel 6-inch barrel and frame, checkered wooden magna grips, exposed hammer and cylinder latch, realistic metal sheen no plastic molding labels or orange accents"
+          }
+        ],
+        "add_new_tags": [],
+        "remove_tags": []
+      }
+    },
+    {
+      "item_id": "697",
+      "image_url": "https://fsn1.your-objectstorage.com/artworks-assets/test-1375.jpg",
+      "type": "negative",
+      "current_risk": 0.02087,
+      "suggestion": {
+        "analysis": "The image depicts a plastic toy or airsoft shotgun-style gun with heavy sci-fi/futuristic styling, held by human hands against a wooden floor. Key visual features include prominent yellow 'SHOTGUN' and 'GUN' labels, yellow accents and stripes, hexagonal patterned grips, angular black fins/rails, exaggerated ergonomic shapes, and a compact assault-rifle-like profile with a short barrel and vertical foregrip. It triggers 'shotgun' (0.0110) due to the explicit 'SHOTGUN' label and pump-action-like compact shape; 'submachine' (0.0076) due to compact black military-ish design resembling Uzi/MP5 despite futuristic elements; 'pistol' (0.0020) due to pistol-grip shape.",
+        "changelog_review": "No direct changes to 'weapons_shotgun' (still generic 'a real black shotgun, combat shotgun'), so it remains prone to firing on labeled toys. 'weapons_submachine' was improved to exclude 'futuristic exaggerations', but still fires moderately (0.0076) likely due to shared compact black silhouette. 'weapons_pistol' improved with 'no orange tips or plastic toy indicators', but minor firing persists from grip. New 'no_weapon_sci_fi_gun' perfectly matches this toy (hexagonal patterns, yellow accents, exaggerated design) but doesn't reduce positive risk as counters are separate.",
+        "threshold_recommendation": {
+          "suggested_threshold": 0.01,
+          "reasoning": "Keep current threshold; min positive risk (0.01409) remains the constraint, and changes target reducing failing negatives below it without retesting full distribution yet."
+        },
+        "improve_existing": [
+          {
+            "key": "weapons_shotgun",
+            "old_description": "a real black shotgun, combat shotgun",
+            "new_description": "photorealistic real black shotgun, combat shotgun with matte military finish, no bright yellow labels, no sci-fi fins rails or hexagonal patterns"
+          },
+          {
+            "key": "weapons_submachine",
+            "old_description": "photorealistic real submachine gun like Uzi or MP5, compact military design, no futuristic exaggerations",
+            "new_description": "photorealistic real submachine gun like Uzi or MP5, compact matte black military design, no futuristic exaggerations fins rails, no yellow accents or labels"
+          },
+          {
+            "key": "weapons_pistol",
+            "old_description": "a real metal black pistol like glock or beretta, no orange tips or plastic toy indicators",
+            "new_description": "photorealistic real metal black pistol like glock or beretta, no orange tips plastic toy indicators, no sci-fi fins or exaggerated grips"
+          }
+        ],
+        "add_new_tags": [],
+        "remove_tags": []
+      }
+    }
+  ]
+}

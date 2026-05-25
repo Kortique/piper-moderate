@@ -1,0 +1,142 @@
+{
+  "category": "drugs",
+  "date": "2026-04-14",
+  "model": "x-ai/grok-4.1-fast",
+  "stats": {
+    "failed_positive_total": 4,
+    "failed_negative_total": 0,
+    "analyzed": 4,
+    "success": 4,
+    "errors": 0
+  },
+  "results": [
+    {
+      "item_id": "1058",
+      "image_url": "https://fsn1.your-objectstorage.com/artworks-assets/test-1874.jpg",
+      "type": "positive",
+      "suggestion": {
+        "analysis": "The model assigned a low score (0.0684) to 'drugs_pills_illegal' because its description focuses on static pills/ecstasy tablets without capturing the specific visual of a pill placed on an open tongue, indicative of illegal drug consumption like MDMA/ecstasy.",
+        "improve_existing": [
+          {
+            "key": "drugs_pills_illegal",
+            "old_description": "illegal drug pills, ecstasy tablets, MDMA pills",
+            "new_description": "illegal drug pills on tongue, ecstasy MDMA tablet on open tongue, person placing pill under tongue"
+          }
+        ],
+        "add_new_tags": [
+          {
+            "key": "drugs_pill_on_tongue",
+            "description": "colored pill on tongue, blue ecstasy pill under tongue, MDMA tablet on open mouth tongue"
+          },
+          {
+            "key": "drugs_ecstasy_consumption",
+            "description": "person with ecstasy pill on tongue, MDMA pill dissolving on tongue, illegal pill in mouth"
+          }
+        ],
+        "remove_tags": []
+      }
+    },
+    {
+      "item_id": "1056",
+      "image_url": "https://fsn1.your-objectstorage.com/artworks-assets/test-1872.jpg",
+      "type": "positive",
+      "suggestion": {
+        "analysis": "Model missed due to low syringe score (0.0032); image shows bloody syringe with needle and blood vial/tube on white surface, classic IV drug use aftermath, but existing tags lack emphasis on blood/residue distinguishing from sterile medical equipment.",
+        "improve_existing": [
+          {
+            "key": "drugs_syringe",
+            "old_description": "a drug syringe with needle, injection drug use",
+            "new_description": "syringe with needle and visible blood, bloody syringe from drug injection"
+          },
+          {
+            "key": "drugs_drug_paraphernalia",
+            "old_description": "drug paraphernalia, crack pipe, meth pipe, tourniquet",
+            "new_description": "drug paraphernalia including bloody syringes, needles, blood vials from IV drug use"
+          },
+          {
+            "key": "drugs_injection",
+            "old_description": "a person injecting drugs with a syringe into arm",
+            "new_description": "syringe with blood in barrel or on needle, IV injection drug preparation or aftermath"
+          }
+        ],
+        "add_new_tags": [
+          {
+            "key": "drugs_bloody_syringe",
+            "description": "syringe filled with or stained by red blood, bloody needle tip, used for injecting drugs"
+          },
+          {
+            "key": "drugs_blood_vial",
+            "description": "red blood-filled vial or tube next to syringe, IV drug use blood draw setup on table"
+          },
+          {
+            "key": "drugs_used_needle",
+            "description": "discarded syringe with blood residue and attached needle, post-injection drug paraphernalia"
+          }
+        ],
+        "remove_tags": []
+      }
+    },
+    {
+      "item_id": "1055",
+      "image_url": "https://fsn1.your-objectstorage.com/artworks-assets/test-1871.jpg",
+      "type": "positive",
+      "suggestion": {
+        "analysis": "Model missed due to image showing multiple hypodermic syringes with needles stored in an open metal tray, indicative of a drug injection kit/paraphernalia, but existing tags emphasize active use ('injection drug use'), specific drugs/powders, or other paraphernalia like pipes, not standalone or grouped medical syringes.",
+        "improve_existing": [
+          {
+            "key": "drugs_syringe",
+            "old_description": "a drug syringe with needle, injection drug use",
+            "new_description": "hypodermic syringe with needle, multiple syringes in tray or kit for drug injection"
+          },
+          {
+            "key": "drugs_drug_paraphernalia",
+            "old_description": "drug paraphernalia, crack pipe, meth pipe, tourniquet",
+            "new_description": "drug paraphernalia including syringes with needles, pipes, tourniquets, injection kits"
+          }
+        ],
+        "add_new_tags": [
+          {
+            "key": "drugs_syringe_kit",
+            "description": "multiple hypodermic syringes with needles in metal tray or box, drug injection kit"
+          },
+          {
+            "key": "drugs_hypodermic_needles",
+            "description": "closeup of hypodermic needles and syringes arranged in container"
+          }
+        ],
+        "remove_tags": []
+      }
+    },
+    {
+      "item_id": "1057",
+      "image_url": "https://fsn1.your-objectstorage.com/artworks-assets/test-1873.jpg",
+      "type": "positive",
+      "suggestion": {
+        "analysis": "Model missed due to existing tags being too specific to 'lines of cocaine' or 'snorting through tube'; this image features a plain pyramid-shaped mound of fine white powder without lines, tubes, or action.",
+        "improve_existing": [
+          {
+            "key": "drugs_cocaine",
+            "old_description": "white cocaine powder on table, lines of cocaine for snorting",
+            "new_description": "white cocaine powder on table or surface, pile or mound or lines of cocaine"
+          },
+          {
+            "key": "drugs_white_powder",
+            "old_description": "lines of white powder being snorted through a tube",
+            "new_description": "white powder suggestive of cocaine, pile mound or lines on dark surface, with or without snorting tube"
+          }
+        ],
+        "add_new_tags": [
+          {
+            "key": "drugs_cocaine_pile",
+            "description": "pyramid shaped mound or pile of fine white cocaine powder on black or dark surface"
+          },
+          {
+            "key": "drugs_powder_mound",
+            "description": "conical or pyramid pile of granular white powder on dark table, suggestive of cocaine"
+          }
+        ],
+        "remove_tags": []
+      }
+    }
+  ]
+}

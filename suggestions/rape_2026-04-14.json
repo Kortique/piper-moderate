@@ -1,0 +1,108 @@
+{
+  "category": "rape",
+  "date": "2026-04-14",
+  "model": "x-ai/grok-4.1-fast",
+  "stats": {
+    "failed_positive_total": 1,
+    "failed_negative_total": 1,
+    "analyzed": 2,
+    "success": 2,
+    "errors": 0
+  },
+  "results": [
+    {
+      "item_id": "961",
+      "image_url": "https://fsn1.your-objectstorage.com/artworks-assets/test-1768.jpg",
+      "type": "positive",
+      "suggestion": {
+        "analysis": "Model missed due to low scores on generic tags (forced, pain, crying, restrained, scared) that hint at violence but lack rape-specific context; existing rape tags too narrow, missing chains, blood, bruises, tear-streaked face, and kneeling restraint pose.",
+        "improve_existing": [
+          {
+            "key": "rape_restrained",
+            "old_description": "person restrained against their will during sex, handcuffed victim",
+            "new_description": "person chained or handcuffed by wrists and ankles against their will during sex, kneeling restrained victim"
+          },
+          {
+            "key": "rape_crying",
+            "old_description": "person crying during sexual act, tears during forced sex",
+            "new_description": "tear-streaked crying face with wide terrified eyes during forced sexual act"
+          },
+          {
+            "key": "rape_scared",
+            "old_description": "a scared and terrified person during sexual act",
+            "new_description": "wide-eyed terrified expression with open mouth distress during sexual assault"
+          },
+          {
+            "key": "rape_pain",
+            "old_description": "person in pain during sex, painful forced penetration",
+            "new_description": "person showing pain via grimacing, bruises, and nearby blood during forced sex"
+          }
+        ],
+        "add_new_tags": [
+          {
+            "key": "rape_chained",
+            "description": "naked woman with heavy chains on wrists and ankles held by muscular man during assault"
+          },
+          {
+            "key": "rape_bloodied_scene",
+            "description": "blood splatters on wooden bench under kneeling assault victim"
+          },
+          {
+            "key": "rape_bruised_body",
+            "description": "bruises and red marks on naked victim's arms, legs, and torso during assault"
+          },
+          {
+            "key": "rape_kneeling_assault",
+            "description": "woman forced to kneel naked on bench with man gripping chains behind her"
+          }
+        ],
+        "remove_tags": []
+      }
+    },
+    {
+      "item_id": "1150",
+      "image_url": "https://fsn1.your-objectstorage.com/artworks-assets/test-1985.jpg",
+      "type": "negative",
+      "suggestion": {
+        "analysis": "Consensual BDSM porn scene featuring a woman in leather harness, collar, thigh straps, and ankle cuffs straddling a man during vaginal penetration; bondage gear and dominant position falsely triggered restraint/force tags, collar misread as choking, neutral expression as pain.",
+        "improve_existing": [
+          {
+            "key": "rape_restrained",
+            "old_description": "person restrained against their will during sex, handcuffed victim",
+            "new_description": "person restrained against their will during sex with visible struggle or distress, handcuffed victim fighting back"
+          },
+          {
+            "key": "rape_forced",
+            "old_description": "forced sex, person being forcefully held down during sex",
+            "new_description": "forced sex with clear resistance, person being forcefully held down and struggling during sex"
+          },
+          {
+            "key": "rape_choking",
+            "old_description": "person being choked violently during sex, strangulation",
+            "new_description": "person being choked violently by hands or object during sex, visible strangulation marks or gasping"
+          },
+          {
+            "key": "rape_pain",
+            "old_description": "person in pain during sex, painful forced penetration",
+            "new_description": "person grimacing in clear pain during forced sex, tears or screams from painful penetration"
+          }
+        ],
+        "add_new_tags": [
+          {
+            "key": "no_rape_consensual_harness",
+            "description": "woman wearing black leather BDSM harness, collar, thigh straps and cuffs during consensual sex"
+          },
+          {
+            "key": "no_rape_bdsm_straddle",
+            "description": "consensual BDSM with woman straddling man in bondage gear, no distress"
+          },
+          {
+            "key": "no_rape_collar_harness",
+            "description": "safe BDSM collar and harness on smiling or neutral woman during penetration"
+          }
+        ],
+        "remove_tags": []
+      }
+    }
+  ]
+}

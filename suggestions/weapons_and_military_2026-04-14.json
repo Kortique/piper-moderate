@@ -1,0 +1,177 @@
+{
+  "category": "weapons_and_military",
+  "date": "2026-04-14",
+  "model": "x-ai/grok-4.1-fast",
+  "stats": {
+    "failed_positive_total": 2,
+    "failed_negative_total": 2,
+    "analyzed": 4,
+    "success": 4,
+    "errors": 0
+  },
+  "results": [
+    {
+      "item_id": "685",
+      "image_url": "https://fsn1.your-objectstorage.com/artworks-assets/test-1363.jpg",
+      "type": "positive",
+      "suggestion": {
+        "analysis": "Model missed due to low score (0.0041) on generic 'weapons_pistol' tag; image features specific Glock pistol (black polymer frame, checkered grip, slide markings) and multiple extended magazines not captured precisely.",
+        "improve_existing": [
+          {
+            "key": "weapons_pistol",
+            "old_description": "a real black pistol, handgun",
+            "new_description": "a real black Glock pistol, polymer frame semi-automatic handgun with checkered grip"
+          },
+          {
+            "key": "weapons_firearm",
+            "old_description": "a real firearm, modern firearm",
+            "new_description": "a real modern semi-automatic pistol, black polymer handgun like Glock"
+          },
+          {
+            "key": "weapons_bullets",
+            "old_description": "real bullets, ammunition, cartridges",
+            "new_description": "real bullets in pistol magazines, brass cartridges in extended mags"
+          }
+        ],
+        "add_new_tags": [
+          {
+            "key": "weapons_glock",
+            "description": "a real black Glock pistol, G17 handgun with slide markings"
+          },
+          {
+            "key": "weapons_pistol_magazines",
+            "description": "black extended pistol magazines, Glock mags with visible brass rounds"
+          },
+          {
+            "key": "weapons_semiauto_pistol",
+            "description": "real semi-automatic black pistol on carpet, handgun with multiple magazines"
+          }
+        ],
+        "remove_tags": []
+      }
+    },
+    {
+      "item_id": "689",
+      "image_url": "https://fsn1.your-objectstorage.com/artworks-assets/test-1367.jpg",
+      "type": "positive",
+      "suggestion": {
+        "analysis": "Model missed due to rifle tags focusing on modern black assault rifles (AR-15, AK-47); image shows classic bolt-action hunting rifles with polished wooden stocks, brass cartridges, and ammo boxes.",
+        "improve_existing": [
+          {
+            "key": "weapons_rifle",
+            "old_description": "a real assault rifle, AR-15, AK-47",
+            "new_description": "a real rifle, assault rifle AR-15 AK-47, bolt-action rifle, hunting rifle with wooden stock"
+          },
+          {
+            "key": "weapons_firearm",
+            "old_description": "a real firearm, modern firearm",
+            "new_description": "a real firearm, rifle shotgun pistol, modern black or classic wooden stock"
+          },
+          {
+            "key": "weapons_bullets",
+            "old_description": "real bullets, ammunition, cartridges",
+            "new_description": "real bullets ammunition cartridges, brass rifle casings, ammo box"
+          }
+        ],
+        "add_new_tags": [
+          {
+            "key": "weapons_bolt_action_rifle",
+            "description": "bolt-action hunting rifle, wooden stock blued barrel long rifle"
+          },
+          {
+            "key": "weapons_hunting_rifle",
+            "description": "classic hunting rifle polished wood stock, rifle in gun case"
+          },
+          {
+            "key": "weapons_ammo_box",
+            "description": "rifle ammunition box carton, bullet cartridges package"
+          }
+        ],
+        "remove_tags": []
+      }
+    },
+    {
+      "item_id": "696",
+      "image_url": "https://fsn1.your-objectstorage.com/artworks-assets/test-1374.jpg",
+      "type": "negative",
+      "suggestion": {
+        "analysis": "Black plastic toy revolver with orange safety tips on barrel, trigger, and accents, plus '5 STAR' branding, mistaken for real pistol/revolver/firearm due to realistic shape and black color overriding toy indicators.",
+        "improve_existing": [
+          {
+            "key": "weapons_pistol",
+            "old_description": "a real black pistol, handgun",
+            "new_description": "a real metal black pistol like glock or beretta, no orange tips or plastic toy indicators"
+          },
+          {
+            "key": "weapons_revolver",
+            "old_description": "a real revolver, magnum revolver",
+            "new_description": "a real metal magnum revolver like smith & wesson .44, no plastic construction or orange safety features"
+          },
+          {
+            "key": "weapons_firearm",
+            "old_description": "a real firearm, modern firearm",
+            "new_description": "a real metal modern firearm like assault rifle or handgun, no toys or replicas"
+          },
+          {
+            "key": "no_weapon_toy_gun",
+            "old_description": "a toy gun, water gun, nerf gun, plastic pistol",
+            "new_description": "a toy gun, plastic pistol or revolver, nerf gun, water gun, cap gun with orange tips and branding"
+          }
+        ],
+        "add_new_tags": [
+          {
+            "key": "no_weapon_toy_revolver",
+            "description": "plastic toy revolver, cap gun revolver with orange barrel tip, trigger, and plastic grips"
+          }
+        ],
+        "remove_tags": [
+          {
+            "key": "weapons_firearm",
+            "reason": "overly broad term fires on any gun-like shape including detailed toys"
+          }
+        ]
+      }
+    },
+    {
+      "item_id": "697",
+      "image_url": "https://fsn1.your-objectstorage.com/artworks-assets/test-1375.jpg",
+      "type": "negative",
+      "suggestion": {
+        "analysis": "Futuristic sci-fi style toy or airsoft rifle with exaggerated black design, yellow/red accents, hexagonal patterns, fins, rails, suppressor muzzle, and 'SHOOTING GUN' label, held by hands on floor; gun-like silhouette falsely triggered rifle/submachine tags despite toy appearance.",
+        "improve_existing": [
+          {
+            "key": "weapons_rifle",
+            "old_description": "a real assault rifle, AR-15, AK-47",
+            "new_description": "photorealistic real assault rifle like AR-15 or AK-47, matte black military finish, no sci-fi fins or bright labels"
+          },
+          {
+            "key": "weapons_submachine",
+            "old_description": "a submachine gun, SMG, Uzi",
+            "new_description": "photorealistic real submachine gun like Uzi or MP5, compact military design, no futuristic exaggerations"
+          },
+          {
+            "key": "weapons_firearm",
+            "old_description": "a real firearm, modern firearm",
+            "new_description": "photorealistic real modern firearm, no toys or replicas with labels or sci-fi styling"
+          },
+          {
+            "key": "no_weapon_toy_gun",
+            "old_description": "a toy gun, water gun, nerf gun, plastic pistol",
+            "new_description": "toy gun, nerf gun, airsoft replica, water gun, plastic pistol or rifle with bright colors, labels, sci-fi designs"
+          }
+        ],
+        "add_new_tags": [
+          {
+            "key": "no_weapon_airsoft_rifle",
+            "description": "airsoft toy rifle, futuristic replica gun with rails fins and labels, sci-fi styled plastic firearm"
+          },
+          {
+            "key": "no_weapon_sci_fi_gun",
+            "description": "sci-fi toy gun, futuristic blaster rifle with hexagonal patterns, yellow accents, exaggerated black design"
+          }
+        ],
+        "remove_tags": []
+      }
+    }
+  ]
+}

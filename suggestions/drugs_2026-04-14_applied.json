@@ -1,0 +1,88 @@
+{
+  "date": "2026-04-14",
+  "category": "drugs",
+  "source": "suggestions/drugs_2026-04-14.json",
+  "changes": [
+    {
+      "action": "improve",
+      "key": "drugs_syringe",
+      "old": "a drug syringe with needle, injection drug use",
+      "new": "hypodermic syringe with needle, multiple syringes in tray or kit for drug injection"
+    },
+    {
+      "action": "improve",
+      "key": "drugs_drug_paraphernalia",
+      "old": "drug paraphernalia, crack pipe, meth pipe, tourniquet",
+      "new": "drug paraphernalia including syringes with needles, pipes, tourniquets, injection kits"
+    },
+    {
+      "action": "improve",
+      "key": "drugs_pills_illegal",
+      "old": "illegal drug pills, ecstasy tablets, MDMA pills",
+      "new": "illegal drug pills on tongue, ecstasy MDMA tablet on open tongue, person placing pill under tongue"
+    },
+    {
+      "action": "improve",
+      "key": "drugs_injection",
+      "old": "a person injecting drugs with a syringe into arm",
+      "new": "syringe with blood in barrel or on needle, IV injection drug preparation or aftermath"
+    },
+    {
+      "action": "improve",
+      "key": "drugs_cocaine",
+      "old": "white cocaine powder on table, lines of cocaine for snorting",
+      "new": "white cocaine powder on table or surface, pile or mound or lines of cocaine"
+    },
+    {
+      "action": "improve",
+      "key": "drugs_white_powder",
+      "old": "lines of white powder being snorted through a tube",
+      "new": "white powder suggestive of cocaine, pile mound or lines on dark surface, with or without snorting tube"
+    },
+    {
+      "action": "add",
+      "key": "drugs_pill_on_tongue",
+      "description": "colored pill on tongue, blue ecstasy pill under tongue, MDMA tablet on open mouth tongue"
+    },
+    {
+      "action": "add",
+      "key": "drugs_ecstasy_consumption",
+      "description": "person with ecstasy pill on tongue, MDMA pill dissolving on tongue, illegal pill in mouth"
+    },
+    {
+      "action": "add",
+      "key": "drugs_bloody_syringe",
+      "description": "syringe filled with or stained by red blood, bloody needle tip, used for injecting drugs"
+    },
+    {
+      "action": "add",
+      "key": "drugs_blood_vial",
+      "description": "red blood-filled vial or tube next to syringe, IV drug use blood draw setup on table"
+    },
+    {
+      "action": "add",
+      "key": "drugs_used_needle",
+      "description": "discarded syringe with blood residue and attached needle, post-injection drug paraphernalia"
+    },
+    {
+      "action": "add",
+      "key": "drugs_syringe_kit",
+      "description": "multiple hypodermic syringes with needles in metal tray or box, drug injection kit"
+    },
+    {
+      "action": "add",
+      "key": "drugs_hypodermic_needles",
+      "description": "closeup of hypodermic needles and syringes arranged in container"
+    },
+    {
+      "action": "add",
+      "key": "drugs_cocaine_pile",
+      "description": "pyramid shaped mound or pile of fine white cocaine powder on black or dark surface"
+    },
+    {
+      "action": "add",
+      "key": "drugs_powder_mound",
+      "description": "conical or pyramid pile of granular white powder on dark table, suggestive of cocaine"
+    }
+  ]
+}

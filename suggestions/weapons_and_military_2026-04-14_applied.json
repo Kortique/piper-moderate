@@ -1,0 +1,31 @@
+{
+  "date": "2026-04-14",
+  "category": "weapons_and_military",
+  "source": "suggestions/weapons_and_military_2026-04-14_contextual_compat.json",
+  "changes": [
+    {
+      "action": "improve",
+      "key": "weapons_pistol",
+      "old": "a real metal black pistol like glock or beretta, no orange tips or plastic toy indicators",
+      "new": "photorealistic semi-automatic pistol glock 17 or beretta 92fs, serrated metal slide, polymer or metal frame with finger grooves, exposed ejection port, no rotating cylinder or orange plastic parts"
+    },
+    {
+      "action": "improve",
+      "key": "weapons_revolver",
+      "old": "a real metal magnum revolver like smith & wesson .44, no plastic construction or orange safety features",
+      "new": "photorealistic smith & wesson model 29 .44 magnum revolver, blued steel 6-inch barrel and frame, checkered wooden magna grips, exposed hammer and cylinder latch, realistic metal sheen no plastic molding labels or orange accents"
+    },
+    {
+      "action": "improve",
+      "key": "weapons_shotgun",
+      "old": "a real black shotgun, combat shotgun",
+      "new": "photorealistic real black shotgun, combat shotgun with matte military finish, no bright yellow labels, no sci-fi fins rails or hexagonal patterns"
+    },
+    {
+      "action": "improve",
+      "key": "weapons_submachine",
+      "old": "photorealistic real submachine gun like Uzi or MP5, compact military design, no futuristic exaggerations",
+      "new": "photorealistic real submachine gun like Uzi or MP5, compact matte black military design, no futuristic exaggerations fins rails, no yellow accents or labels"
+    }
+  ]
+}
