@@ -37,6 +37,69 @@ All three "c" models converged to AUC ~0.946–0.948 — high-performance undera
 V11cs80 leads on **child + teen recall** (98% / 90%), V6c leads on **adult FPR** (12.6%),
 V8cs80 sits in the middle as the production-ready compromise.
 
+### Threshold calibration (Sprint 2026-05)
+
+The honest holdout table above uses the default `thr=0.30`. After retraining with
+3× larger scope, all three models became substantially more confident — the
+distribution of positive scores shifted, so the default threshold over-blocks
+adults. A full sweep on the entire 9,083-item current-label dataset (LS + Grafana
++ K30) shows the actual operating curves:
+
+#### V8cs80 — production candidate
+
+| thr | child rec | teen rec | adult FPR | Op (balanced acc) |
+|---|---|---|---|---|
+| 0.30 | 99.2% | 95.6% | 8.4% | 0.954 |
+| **0.40** | **98.8%** | **93.2%** | 4.5% | **0.958** ← max Op |
+| 0.50 | 98.1% | 89.8% | 2.2% | 0.952 |
+| **0.51** | **98.1%** | **89.4%** | **2.2%** | **0.952** ← deployed |
+| 0.60 | 97.2% | 83.8% | 1.5% | 0.932 |
+
+#### V11cs80 — strict-detection candidate
+
+| thr | child rec | teen rec | adult FPR | Op |
+|---|---|---|---|---|
+| 0.30 | 99.2% | 94.2% | 18.9% | 0.915 |
+| **0.38** | **99.1%** | **90.9%** | 14.7% | **0.918** ← max Op |
+| 0.40 | 99.0% | 89.5% | 13.8% | 0.916 |
+| 0.50 | 98.2% | 83.8% | 9.2% | 0.909 |
+| **0.60** | **97.4%** | **77.9%** | **5.6%** | **0.899** ← chosen (low-FPR mode) |
+
+V11cs80 has structurally higher FPR than V8 across all thresholds — it sees a wider
+317-tag taxonomy and is more eager to fire. To match V8-like FPR (~2–5%) requires
+`thr=0.60–0.65`, which costs ~12pp teen recall.
+
+#### V6c — legacy LGBM
+
+| thr | child rec | teen rec | adult FPR | Op |
+|---|---|---|---|---|
+| 0.30 | 98.9% | 91.6% | 6.0% | 0.948 |
+| **0.34** | **98.8%** | **90.5%** | 4.6% | **0.949** ← max Op |
+| 0.40 | 98.3% | 88.1% | 3.2% | 0.944 |
+| **0.50** | **97.5%** | **84.4%** | **2.1%** | **0.933** ← chosen |
+| 0.60 | 96.5% | 78.5% | 1.2% | 0.913 |
+
+#### Locked production thresholds (`data/thresholds.json`)
+
+```json
+{
+  "v6":     0.50,    // FPR 2.1%, child 97.5%, teen 84.4%
+  "v8":     0.51,    // FPR 2.2%, child 98.1%, teen 89.4%  ← production candidate
+  "v11":    0.60,    // FPR 5.6%, child 97.4%, teen 77.9%
+  "k30tom": 0.10     // Tom K=30 pipeline default
+}
+```
+
+These match the "low-FPR" operating mode — we prefer minimal false positives on
+adults at the cost of ~3–5pp teen recall vs the Op-maximum. Reasoning: legitimate
+adult content blocked by mistake creates user-facing friction (jail/strike) while
+borderline-passed teen content is caught downstream by the moderation queue + Tom's
+strict ≤14 detector.
+
+At these thresholds **V8cs80 dominates on every axis**: best child recall (98.1%),
+best teen recall (89.4%), lowest FPR (2.2%) — it is the clear production winner.
+V11cs80 only earns its keep at much lower thresholds where it sacrifices precision.
+
 #### Previous models (Sprint 2026-04, narrower scope)
 
 For reference — these were trained on LS+Grafana only (~2,500 items) before K30 was added:
