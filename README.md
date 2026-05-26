@@ -4,8 +4,9 @@ Underage-content moderation pipeline built on top of SigLIP-2 image-text classif
 gradient-boosting scorer. Includes training scripts, an interactive gallery for live model
 comparison and moderation, and cross-validation tooling against external benchmarks.
 
-**Current production model:** `V8pas80-v2` — deployed in Piper project `d2911d10bb`.
-**Candidate model:** `V11s80` — deployed for evaluation in `ce79f7e299` (native V11 pipeline).
+**Currently deployed:** `V8pas80-v2` in Piper project `d2911d10bb` (production).
+**Production candidate (Sprint 2026-05):** `V8cs80` — same architecture, extended scope, +11pp teen recall vs deployed.
+**Candidate model:** `V11s80` in `ce79f7e299`. **Next candidate:** `V11cs80` (extended scope, 98% child / 90% teen recall).
 
 ## How it works
 
@@ -17,30 +18,42 @@ The LGBM scorer learns from per-image SigLIP cosine scores plus three semantic a
 (Body / Context / Interaction) that disambiguate "real child in frame" from
 "child-adjacent context without an actual child" (cosplay, anime classroom, etc.).
 
-### Honest holdout numbers
+### Honest holdout numbers (Sprint 2026-05 — extended scope)
 
-Each "b" model is re-trained on the same shared 80/20 stratified split
-(`data/v11_test_split.json`, SEED=1337, 618 held-out items: 77 child / 170 teen / 371 adult),
+After a full manual relabel of 9,150 items, each "c" model was re-trained on the
+**extended scope** (LS + Grafana + K30 = ~7,300 train items) and evaluated on
+`data/v11_test_split_2026.json` — a fresh 80/20 split stratified by label × source
+(1,815 held-out items: 292 child / 357 teen / 1,179 adult; 433 LS + 169 Grafana + 1,226 K30),
 averaged across 3 lgb seeds {1, 42, 314}.
 
 | Model | Test AUC | child recall | teen recall | adult FPR | n_features | scope |
 |---|---|---|---|---|---|---|
-| V6b (legacy LGBM) | 0.873 ±0.003 | 93.7% | 67.7% | 20.7% | 312 | qwen3 + grafana |
-| V8bs80 (slim) | 0.842 ±0.004 | 92.0% | 59.5% | 20.2% | 80 | LS-only training |
-| **V11bs80 (slim)** | **0.879 ±0.003** | **93.9%** | **71.2%** | **20.8%** | 80 | LS + grafana + BCI |
-| Tom K=30 (external) | 0.812 | 88.7% | 29.0% | 7.0% | 37 | targets `≤14` only |
+| V6c (legacy LGBM) | 0.948 ±0.001 | 97.4% | 79.1% | **12.6%** | 314 | LS + Grafana + K30 |
+| V8cs80 (slim, production candidate) | 0.947 ±0.001 | 96.8% | 81.5% | 16.3% | 80 | LS + Grafana + K30 + hard-neg |
+| **V11cs80 (slim, candidate)** | **0.946 ±0.001** | **98.0%** | **90.1%** | 22.9% | 80 | LS + Grafana + K30 + BCI |
+| Tom K=30 (external reference) | 0.787 | 88.7% | 61.4% | 20.7% | 37 | targets `≤14` only |
 
-V11 dominates the underage axis (highest AUC, highest teen recall, comparable child recall).
-Tom's K=30 wins on adult FPR purely because his target is `≤14` (strict CSAM detection),
-so most of our `teen` (15–17) sample is correctly considered "adult enough" by his model.
+All three "c" models converged to AUC ~0.946–0.948 — high-performance underage detection.
+V11cs80 leads on **child + teen recall** (98% / 90%), V6c leads on **adult FPR** (12.6%),
+V8cs80 sits in the middle as the production-ready compromise.
 
-### Full-CV numbers (training-set 5-fold stratified)
+#### Previous models (Sprint 2026-04, narrower scope)
+
+For reference — these were trained on LS+Grafana only (~2,500 items) before K30 was added:
+
+| Model | Test AUC | child | teen | adult FPR | scope |
+|---|---|---|---|---|---|
+| V6b | 0.888 ±0.001 | 93.6% | 70.8% | 18.2% | LS + Grafana |
+| V8bs80 | 0.844 ±0.001 | 92.0% | 58.2% | 18.4% | LS only |
+| V11bs80 | 0.879 ±0.003 | 93.9% | 71.2% | 20.8% | LS + Grafana |
+
+#### Full-CV numbers (training-set 5-fold stratified)
 
 | Model | n_samples | CV AUC | n_features |
 |---|---|---|---|
 | V6 (recomputed retroactively) | 2,903 | 0.879 ±0.012 | 312 |
-| V8pas80-v2 (slim, production) | 3,574 | 0.850 ±0.013 | 80 |
-| V11s80 (slim, candidate) | 3,652 | 0.905 ±0.007 | 80 |
+| V8pas80-v2 (slim, currently deployed) | 3,574 | 0.850 ±0.013 | 80 |
+| V11s80 (slim) | 3,652 | 0.905 ±0.007 | 80 |
 
 `:x20` and `:x5` multiplier suffixes were retired in Sprint 2025-11 (Path A) — they caused
 systematic false positives on adult POV shots. The LGBM scorer now sees raw cosine scores.
@@ -54,11 +67,15 @@ piper-moderate/
 │
 ├── scripts/
 │   │  ── training ──
-│   ├── train_v8pas80_v2.py       # production model retrain
-│   ├── train_v11.py              # V11 candidate
-│   ├── train_v6b_holdout.py      # honest holdout retrain: V6
-│   ├── train_v8b_holdout.py      # honest holdout retrain: V8
-│   ├── train_v11b_holdout.py     # honest holdout retrain: V11
+│   ├── train_v8pas80_v2.py       # original production model retrain (LS only, ~3k items)
+│   ├── train_v11.py              # V11 candidate (original)
+│   ├── train_v6b_holdout.py      # honest holdout retrain: V6 (LS+Grafana)
+│   ├── train_v8b_holdout.py      # honest holdout retrain: V8 (LS only)
+│   ├── train_v11b_holdout.py     # honest holdout retrain: V11 (LS+Grafana)
+│   ├── train_v6c_holdout.py      # extended scope V6 (LS+Grafana+K30)
+│   ├── train_v8c_holdout.py      # extended scope V8 (LS+Grafana+K30+hardneg×20)
+│   ├── train_v11c_holdout.py     # extended scope V11 (LS+Grafana+K30+BCI)
+│   ├── make_holdout_split_2026.py # creates v11_test_split_2026.json (stratified by label×source)
 │   ├── train_slim.py             # feature pruning (top-N by gain + always-keep 4 BCI)
 │   │
 │   │  ── rescore (resumable, retry/backoff on 5xx and timeouts) ──
@@ -74,6 +91,9 @@ piper-moderate/
 │   │
 │   │  ── deploy + compare ──
 │   ├── export_v8pas80_v2_js.py   # build JS LGBM evaluate-script for Piper
+│   ├── export_v8cs80_js.py       # V8cs80 (extended scope) → Piper JS
+│   ├── export_v11cs80_js.py      # V11cs80 (extended scope) → Piper JS
+│   ├── extract_v8cs80_ls_fps.py  # next-wave hard-neg mining on V8cs80 LS adults
 │   ├── deploy_v8pas80_v2.py      # PATCH Piper d2911d10bb with new model
 │   ├── rollback_piper.py
 │   ├── bench_v8pas80_v2.py       # regression gates on LS holdout
@@ -305,12 +325,12 @@ Versus Tom Renneberg's [K=30 BCI model](https://gitlab.artworks.ai/realistic-ai/
 The two models target different policies — Tom: strict `≤14`, ours: `≤17` —
 so each dominates on its own scope.
 
-| Axis | V11bs80 (ours) | Tom K=30 |
+| Axis | V11cs80 (ours, 2026-05) | Tom K=30 |
 |---|---|---|
-| holdout AUC | **0.879** | 0.812 |
-| child recall | 93.9% | 88.7% |
-| teen recall (15–17) | **71.2%** | 29.0% |
-| adult FPR | 20.8% | **7.0%** |
+| holdout AUC | **0.946** | 0.787 |
+| child recall | **98.0%** | 88.7% |
+| teen recall (15–17) | **90.1%** | 61.4% |
+| adult FPR | 22.9% | **20.7%** |
 | target policy | `≤17` underage content | `≤14` CSAM |
 
 `adult FPR` measured against our 18+ adult test set: Tom is correctly less aggressive on

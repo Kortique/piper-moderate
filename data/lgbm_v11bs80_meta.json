@@ -154,21 +154,6 @@
     ]
   },
   "by_source_slim": {
-    "ls": {
-      "n": 438,
-      "auc": 0.8665367092050683,
-      "child_recall": 0.9074074074074074,
-      "teen_recall": 0.5728155339805825,
-      "adult_fpr": 0.1601423487544484,
-      "counts": {
-        "n_child": 54,
-        "n_teen": 103,
-        "n_adult": 281,
-        "blk_child": 49,
-        "blk_teen": 59,
-        "blk_adult": 45
-      }
-    },
     "grafana": {
       "n": 180,
       "auc": 0.8866666666666667,
@@ -183,10 +168,25 @@
         "blk_teen": 59,
         "blk_adult": 33
       }
+    },
+    "ls": {
+      "n": 438,
+      "auc": 0.8665367092050683,
+      "child_recall": 0.9074074074074074,
+      "teen_recall": 0.5728155339805825,
+      "adult_fpr": 0.1601423487544484,
+      "counts": {
+        "n_child": 54,
+        "n_teen": 103,
+        "n_adult": 281,
+        "blk_child": 49,
+        "blk_teen": 59,
+        "blk_adult": 45
+      }
     }
   },
   "compare_to_v11s80_cv_auc": 0.9054234560911814,
   "n_features_full": 491,
   "n_features_slim": 80,
-  "trained_at": "2026-05-23T06:54:56.394308"
+  "trained_at": "2026-05-26T15:12:50.696969"
 }

@@ -2,113 +2,113 @@
   "version": "v6b",
   "parent": "v6 (V6 LGBM re-trained excluding v11_test_split)",
   "split": "data/v11_test_split.json (SEED=1337, stratified 80/20 by V11 training data)",
-  "n_train": 2326,
-  "n_test": 576,
+  "n_train": 2413,
+  "n_test": 592,
   "test_source_breakdown": {
-    "ls": 437,
-    "grafana": 139
+    "ls": 428,
+    "grafana": 164
   },
   "test_label_breakdown": {
-    "child": 74,
-    "teen": 159,
-    "adult": 343
+    "child": 78,
+    "teen": 163,
+    "adult": 351
   },
   "multi_seed": {
     "auc": {
-      "mean": 0.8727211301442711,
-      "std": 0.0027205777027888476
+      "mean": 0.8884239064045426,
+      "std": 0.0010963031893363089
     },
     "child_recall": {
-      "mean": 0.936936936936937,
-      "std": 0.006370331362040956
+      "mean": 0.9358974358974358,
+      "std": 1.1102230246251565e-16
     },
     "teen_recall": {
-      "mean": 0.6771488469601676,
-      "std": 0.002964808306861834
+      "mean": 0.707566462167689,
+      "std": 0.0057841045495832305
     },
     "adult_fpr": {
-      "mean": 0.20699708454810495,
-      "std": 0.002380456504162468
+      "mean": 0.18233618233618232,
+      "std": 0.00805819693659883
     },
     "per_seed": [
       {
         "seed": 1,
-        "auc": 0.8755364806866954,
-        "child_recall": 0.9324324324324325,
-        "teen_recall": 0.6729559748427673,
-        "adult_fpr": 0.20408163265306123,
+        "auc": 0.8895508978496531,
+        "child_recall": 0.9358974358974359,
+        "teen_recall": 0.7116564417177914,
+        "adult_fpr": 0.17663817663817663,
         "counts": {
-          "n_child": 74,
-          "n_teen": 159,
-          "n_adult": 343,
-          "blk_child": 69,
-          "blk_teen": 107,
-          "blk_adult": 70
+          "n_child": 78,
+          "n_teen": 163,
+          "n_adult": 351,
+          "blk_child": 73,
+          "blk_teen": 116,
+          "blk_adult": 62
         }
       },
       {
         "seed": 42,
-        "auc": 0.8690424054355035,
-        "child_recall": 0.9324324324324325,
-        "teen_recall": 0.6792452830188679,
-        "adult_fpr": 0.20699708454810495,
+        "auc": 0.8887824945916234,
+        "child_recall": 0.9358974358974359,
+        "teen_recall": 0.6993865030674846,
+        "adult_fpr": 0.17663817663817663,
         "counts": {
-          "n_child": 74,
-          "n_teen": 159,
-          "n_adult": 343,
-          "blk_child": 69,
-          "blk_teen": 108,
-          "blk_adult": 71
+          "n_child": 78,
+          "n_teen": 163,
+          "n_adult": 351,
+          "blk_child": 73,
+          "blk_teen": 114,
+          "blk_adult": 62
         }
       },
       {
         "seed": 314,
-        "auc": 0.8735845043106145,
-        "child_recall": 0.9459459459459459,
-        "teen_recall": 0.6792452830188679,
-        "adult_fpr": 0.2099125364431487,
+        "auc": 0.8869383267723516,
+        "child_recall": 0.9358974358974359,
+        "teen_recall": 0.7116564417177914,
+        "adult_fpr": 0.19373219373219372,
         "counts": {
-          "n_child": 74,
-          "n_teen": 159,
-          "n_adult": 343,
-          "blk_child": 70,
-          "blk_teen": 108,
-          "blk_adult": 72
+          "n_child": 78,
+          "n_teen": 163,
+          "n_adult": 351,
+          "blk_child": 73,
+          "blk_teen": 116,
+          "blk_adult": 68
         }
       }
     ]
   },
   "by_source": {
     "grafana": {
-      "n": 139,
-      "auc": 0.8493925429409301,
+      "n": 164,
+      "auc": 0.9235241502683363,
       "child_recall": 1.0,
-      "teen_recall": 0.8245614035087719,
-      "adult_fpr": 0.41935483870967744,
+      "teen_recall": 0.8548387096774194,
+      "adult_fpr": 0.2948717948717949,
       "counts": {
-        "n_child": 20,
-        "n_teen": 57,
-        "n_adult": 62,
-        "blk_child": 20,
-        "blk_teen": 47,
-        "blk_adult": 26
+        "n_child": 24,
+        "n_teen": 62,
+        "n_adult": 78,
+        "blk_child": 24,
+        "blk_teen": 53,
+        "blk_adult": 23
       }
     },
     "ls": {
-      "n": 437,
-      "auc": 0.8728442376129208,
-      "child_recall": 0.9259259259259259,
-      "teen_recall": 0.5980392156862745,
-      "adult_fpr": 0.16370106761565836,
+      "n": 428,
+      "auc": 0.8726456339359565,
+      "child_recall": 0.9074074074074074,
+      "teen_recall": 0.6237623762376238,
+      "adult_fpr": 0.16483516483516483,
       "counts": {
         "n_child": 54,
-        "n_teen": 102,
-        "n_adult": 281,
-        "blk_child": 50,
-        "blk_teen": 61,
-        "blk_adult": 46
+        "n_teen": 101,
+        "n_adult": 273,
+        "blk_child": 49,
+        "blk_teen": 63,
+        "blk_adult": 45
       }
     }
   },
-  "trained_at": "2026-05-23T06:55:46.016213"
+  "trained_at": "2026-05-26T15:12:20.256207"
 }

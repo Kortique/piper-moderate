@@ -276,10 +276,11 @@ def _load_lgbm_py(tag: str, model_file: str, feat_file: str):
 
 
 def _v8_lgbm_score(underage_labels: dict, adult_labels: dict) -> float | None:
-    """V8pas80-v2 — slim 80 features, BCI-aware, no no_underage_."""
-    booster, feats = _load_lgbm_py('V8pas80-v2',
-                                    'lgbm_underage_v8pas80_v2.txt',
-                                    'lgbm_v8pas80_v2_features.json')
+    """V8cs80 — slim 80 features, BCI-aware, no no_underage_.
+    Extended scope (LS + Grafana + K30 ~7400 train items), AUC 0.947 on 1815-item holdout."""
+    booster, feats = _load_lgbm_py('V8cs80',
+                                    'lgbm_underage_v8cs80.txt',
+                                    'lgbm_v8cs80_features.json')
     if booster is None:
         return None
     return _bci_score(booster, feats, underage_labels, adult_labels)
@@ -287,13 +288,14 @@ def _v8_lgbm_score(underage_labels: dict, adult_labels: dict) -> float | None:
 
 def _v11_lgbm_score(underage_labels: dict, adult_labels: dict,
                     no_underage_labels: dict | None = None) -> float | None:
-    """V11s80 — slim 80 features, BCI-aware.
+    """V11cs80 — slim 80 features, BCI-aware. Extended scope (LS+Grafana+K30 ~6900 train),
+    AUC 0.946, child 98.0%, teen 90.1% on 1722-item holdout.
     CRITICAL: V11 was trained with no_underage_labels merged into adult_labels
-    (train_v11.py:69-70). Skipping the merge inflates adult FPR by ~6pp.
+    (train_v11c.transform_item). Skipping the merge inflates adult FPR by ~6pp.
     """
-    booster, feats = _load_lgbm_py('V11s80',
-                                    'lgbm_underage_v11s80.txt',
-                                    'lgbm_v11s80_features.json')
+    booster, feats = _load_lgbm_py('V11cs80',
+                                    'lgbm_underage_v11cs80.txt',
+                                    'lgbm_v11cs80_features.json')
     if booster is None:
         return None
     if no_underage_labels:
@@ -1286,6 +1288,43 @@ select, input[type=text] {
 
 /* Marked stats span in header */
 .s-mk { color: #ffd040; }
+/* Disagree frame around lightbox image when an inactive model strongly outscores Tom */
+#lb-wrap.lb-disagree-frame img {
+  outline: 4px solid var(--lb-disagree-color, rgba(255, 130, 0, 0.7));
+  outline-offset: -4px;
+  transition: outline-color 0.2s;
+}
+/* Category mark controls inside #lb-info */
+#lb-cat-block { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+#lb-cat-block .lb-cat-row { display: flex; gap: 4px; align-items: center; }
+#lb-cat-select {
+  flex: 1; background: #181818; border: 1px solid #333; color: #ddd;
+  font-family: monospace; font-size: 14px; padding: 4px 6px; border-radius: 2px;
+}
+.lb-cat-btn {
+  background: #1e1e1e; border: 1px solid #333; color: #aaa;
+  font-family: monospace; font-size: 14px; padding: 5px 12px; border-radius: 3px;
+  cursor: pointer; transition: background 0.1s, border-color 0.1s;
+}
+.lb-cat-btn:hover  { background: #2a2a2a; }
+.lb-cat-btn.pos    { color: #6fda72; border-color: #2d6c3a; }
+.lb-cat-btn.pos:hover  { background: #14361b; }
+.lb-cat-btn.neg    { color: #ff8060; border-color: #803030; }
+.lb-cat-btn.neg:hover  { background: #3a1818; }
+.lb-cat-btn.clr    { color: #777; }
+#lb-cat-status { color: #aaa; font-size: 13px; line-height: 1.5; padding-top: 6px; }
+#lb-cat-status .cat-tag { display: inline-block; padding: 3px 9px; margin: 3px 4px 0 0;
+                          background: #232323; border-radius: 2px; font-size: 13px; }
+#lb-cat-status .cat-tag.pos { color: #6fda72; }
+#lb-cat-status .cat-tag.neg { color: #ff8060; }
+
+/* Export-categories button styling */
+#export-cat-btn {
+  background:#1a221a; border:1px solid #305030; color:#80ff80;
+  padding:5px 12px; border-radius:3px; cursor:pointer; font-size:12px;
+}
+#export-cat-btn:hover { background:#1f2e1f; border-color:#508050; }
+#export-cat-btn:disabled { opacity:.4; cursor:default; }
 /* Viewed-in-lightbox marker on the card (top-left eye) */
 .viewed-badge {
   position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
@@ -1297,6 +1336,38 @@ select, input[type=text] {
 }
 /* Lightbox thumb that has been marked for deletion → dim like the card */
 .lb-thumb.hidden-pending { opacity: .35; border-color: #803030 !important; }
+/* Pending category mark — staged in lightbox, applied on Save */
+.card.cat-pending { opacity: .35; outline: 2px solid #b040d0; outline-offset: -2px; }
+.lb-thumb.cat-pending { opacity: .45; border-color: #b040d0 !important; }
+.lb-thumb-dot.cat { background: #c060ff; box-shadow: 0 0 3px #c060ff; }
+/* Category list rows in lb-info sidebar */
+.lb-cat-list { display: flex; flex-direction: column; gap: 2px; }
+.lb-cat-row-item {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 8px;
+  align-items: center; padding: 6px 0;
+}
+.lb-cat-row-item .lb-cat-name { color: #aaa; font-size: 15px; padding-left: 2px; }
+.lb-cat-row-item .lb-cat-name.has-pending { color: #c060ff; font-weight: bold; }
+.lb-cat-row-item .lb-cat-name.has-committed.pos { color: #6fda72; }
+.lb-cat-row-item .lb-cat-name.has-committed.neg { color: #ff8060; }
+.lb-cat-row-item .lb-cat-btn { padding: 5px 12px; font-size: 13px; min-width: 52px; font-weight: bold; }
+.lb-cat-row-item .lb-cat-btn.active.pos {
+  background: #14361b; border-color: #6fda72; color: #6fda72; font-weight: bold;
+}
+.lb-cat-row-item .lb-cat-btn.active.neg {
+  background: #3a1818; border-color: #ff8060; color: #ff8060; font-weight: bold;
+}
+.lb-cat-row-item .lb-cat-btn.pending {
+  border-style: dashed; border-color: #c060ff; color: #c060ff;
+}
+/* Keep-in-current checkbox row */
+#lb-keep-current-row {
+  display: none; margin-top: 10px; padding-top: 10px;
+  border-top: 1px dashed #2a2a2a; align-items: center; gap: 10px;
+  font-size: 14px; color: #aaa; cursor: pointer; user-select: none;
+}
+#lb-keep-current-row.visible { display: flex; }
+#lb-keep-current-row input[type=checkbox] { margin: 0; cursor: pointer; }
 .lb-thumb.hidden-pending img { opacity: .45 !important; }
 /* Disagreement value colour in lb-info */
 #lb-info .lb-v.disagree-hi  { color: #ff7878; }
@@ -1395,6 +1466,9 @@ select, input[type=text] {
 .radios label.cat-child:has(input:checked) { background:#3a1010; border-color:#883333; color:#ff8080; font-weight:bold; }
 .radios label.cat-teen:has(input:checked)  { background:#3a2e00; border-color:#887733; color:#ffd040; font-weight:bold; }
 .radios label.cat-adult:has(input:checked) { background:#0f2210; border-color:#337744; color:#6fda72; font-weight:bold; }
+.radios label.cat-positive { /* same dimensions as child/teen/adult labels */ }
+.radios label.cat-positive:has(input:checked) { background:#0f2210; border-color:#337744; color:#6fda72; font-weight:bold; }
+.radios label.cat-negative:has(input:checked) { background:#2a1010; border-color:#aa3333; color:#ff6060; font-weight:bold; }
 
 
 /* lightbox */
@@ -1405,8 +1479,8 @@ select, input[type=text] {
 #lb-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
 #lb-counter {
   position: absolute; top: 10px; left: 10px;
-  background: rgba(0,0,0,.78); padding: 4px 9px; border-radius: 3px;
-  font-family: monospace; font-size: 11px; color: #aaa; pointer-events: none;
+  background: rgba(0,0,0,.78); padding: 6px 13px; border-radius: 3px;
+  font-family: monospace; font-size: 15px; color: #aaa; pointer-events: none;
 }
 /* Lightbox: image + info sidebar side-by-side */
 #lb-main { display: flex; flex-direction: row; gap: 14px; align-items: stretch;
@@ -1416,14 +1490,14 @@ select, input[type=text] {
 #lb-wrap img { max-width: 100%; max-height: 82vh; object-fit: contain;
                display: block; border-radius: 3px; }
 #lb-info {
-  flex: 0 0 290px; align-self: stretch; overflow-y: auto;
+  flex: 0 0 380px; align-self: stretch; overflow-y: auto;
   background: rgba(20,20,20,.96); border: 1px solid #2a2a2a;
-  padding: 10px 12px; border-radius: 4px;
-  font-family: monospace; font-size: 11px; color: #ccc;
+  padding: 14px 16px; border-radius: 4px;
+  font-family: monospace; font-size: 15px; color: #ccc;
   text-align: left; pointer-events: auto;
 }
-#lb-info .lb-row { display: flex; justify-content: space-between; gap: 10px; margin: 2px 0; line-height: 1.5; }
-#lb-info .lb-k { color: #666; text-transform: uppercase; font-size: 9px; align-self: center; letter-spacing: .5px; }
+#lb-info .lb-row { display: flex; justify-content: space-between; gap: 10px; margin: 4px 0; line-height: 1.6; }
+#lb-info .lb-k { color: #666; text-transform: uppercase; font-size: 12px; align-self: center; letter-spacing: .5px; }
 #lb-info .lb-v { color: #ddd; font-weight: bold; }
 #lb-info .lb-v.lo { color: #555; font-weight: normal; }
 #lb-info .lb-v.score-blocked { color: #ff8060; }    /* lgbm >= thr — would block */
@@ -1436,8 +1510,8 @@ select, input[type=text] {
 #lb-info .lb-badge-conf { color: #6fda72; }
 /* Verdict badge — at top of sidebar */
 #lb-info .lb-verdict {
-  text-align: center; padding: 6px 8px; margin: -2px -4px 8px; border-radius: 3px;
-  font-size: 12px; font-weight: bold; letter-spacing: 1px;
+  text-align: center; padding: 10px 12px; margin: -2px -4px 12px; border-radius: 3px;
+  font-size: 17px; font-weight: bold; letter-spacing: 1px;
 }
 #lb-info .lb-verdict.underage { background: #4a1818; color: #ff7878; border: 1px solid #802020; }
 #lb-info .lb-verdict.ok       { background: #14361b; color: #6fda72; border: 1px solid #2d6c3a; }
@@ -1445,7 +1519,7 @@ select, input[type=text] {
 /* Narrow viewport → fallback overlay over image */
 @media (max-width: 920px) {
   #lb-main { flex-direction: column; max-height: 92vh; align-items: center; }
-  #lb-info { flex: 0 0 auto; max-height: 30vh; width: 280px; }
+  #lb-info { flex: 0 0 auto; max-height: 30vh; width: 360px; }
 }
 
 /* Image column = picture + thumbs strip below */
@@ -1498,8 +1572,8 @@ select, input[type=text] {
 }
 #lb-hints {
   position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
-  background: rgba(0,0,0,.78); padding: 3px 12px; border-radius: 3px;
-  font-family: monospace; font-size: 10px; color: #888;
+  background: rgba(0,0,0,.78); padding: 5px 16px; border-radius: 3px;
+  font-family: monospace; font-size: 13px; color: #888;
   white-space: nowrap; pointer-events: none; letter-spacing: 0.5px;
 }
 .lb-flash      { animation: lbFlash 0.28s ease-out; }
@@ -1745,6 +1819,17 @@ select, input[type=text] {
 <header>
   <h1>Gallery <span id="subtitle" style="color:#555"></span></h1>
 
+  <label style="display:flex;align-items:center;gap:4px">Категория
+    <select id="f-category" title="Domain category — switch between Underage and other moderation policies">
+      <option value="underage" selected>Underage</option>
+      <option value="bestiality">Bestiality</option>
+      <option value="human_waste">Human Waste</option>
+      <option value="death_murder">Death &amp; Murder</option>
+      <option value="blood">Blood</option>
+      <option value="rape">Rape</option>
+    </select>
+  </label>
+
   <label style="display:flex;align-items:center;gap:4px">Источник
     <select id="f-source">
       <option value="all">Все</option>
@@ -1771,7 +1856,7 @@ select, input[type=text] {
   </label>
 
 
-  <label style="display:flex;align-items:center;gap:4px">Возраст q3
+  <label id="age-q3-wrap" style="display:flex;align-items:center;gap:4px">Возраст q3
     <select id="f-age-q3">
       <option value="all">все</option>
       <option value="0-14">≤14</option>
@@ -1782,7 +1867,7 @@ select, input[type=text] {
     </select>
   </label>
 
-  <label style="display:flex;align-items:center;gap:4px">Возраст fd
+  <label id="age-fd-wrap" style="display:flex;align-items:center;gap:4px">Возраст fd
     <select id="f-age-fd">
       <option value="all">все</option>
       <option value="0-9">≤9</option>
@@ -1824,6 +1909,7 @@ select, input[type=text] {
   <button id="confirm-btn" onclick="confirmPage()" title="Подтвердить все AI-метки на текущей странице без изменений">✓ Подтвердить страницу</button>
   <button id="save-btn" onclick="saveChanges()">💾 Сохранить</button>
   <button id="export-btn" onclick="exportMarked()" disabled title="Экспортировать отмеченные изображения в JSON">📥 Экспорт ⭐ (<span id="export-cnt">0</span>)</button>
+  <button id="export-cat-btn" onclick="exportCategories()" disabled title="Экспортировать категоризованные изображения по категориям">📥 Категории (<span id="export-cat-cnt">0</span>)</button>
   <button id="lgbm-toggle-btn" onclick="toggleLgbmBar()" title="LGBM пороги и статистика">⚙ LGBM</button>
 </header>
 
@@ -1900,12 +1986,242 @@ select, input[type=text] {
 
 <script>
 let allData = [], sessions = [], changes = {}, hidden = new Set(), toConfirm = new Set(), viewedIds = new Set(), filteredData = [], currentPage = 1;
+let currentDomain = 'underage';   // gallery domain: underage | bestiality | human_waste | death_murder | blood | rape
 
 // Marked-for-followup items — persisted across reloads via localStorage.
 let marked = (() => {
   try { return new Set(JSON.parse(localStorage.getItem('marked') || '[]')); }
   catch { return new Set(); }
 })();
+
+// Categorized items for moderating other policy domains (bestiality / human_waste / death_murder / blood / rape).
+// Per category × status (positive | negative). Persisted in localStorage.
+const LB_CATEGORIES = [
+  { key: 'bestiality',    label: 'Bestiality' },
+  { key: 'human_waste',   label: 'Human Waste' },
+  { key: 'death_murder',  label: 'Death & Murder' },
+  { key: 'blood',         label: 'Blood' },
+  { key: 'rape',          label: 'Rape' },
+];
+let categoryMarks = {};
+LB_CATEGORIES.forEach(c => { categoryMarks[c.key] = { positive: new Set(), negative: new Set() }; });
+(() => {
+  try {
+    const flat = JSON.parse(localStorage.getItem('categoryMarks') || '{}');
+    for (const c of LB_CATEGORIES) {
+      if (flat[c.key]) {
+        categoryMarks[c.key].positive = new Set(flat[c.key].positive || []);
+        categoryMarks[c.key].negative = new Set(flat[c.key].negative || []);
+      }
+    }
+  } catch {}
+})();
+
+// Pending category moves — staged via lightbox, applied to categoryMarks on Save.
+// Mirrors the deletion (hidden Set) and changes flow.
+// IDs that should remain visible in the current category (e.g. Underage)
+// even after being categorised into bestiality/etc. Persisted in localStorage.
+let keepInCurrent = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem('keepInCurrent') || '[]')); }
+  catch { return new Set(); }
+})();
+function persistKeepInCurrent() {
+  try { localStorage.setItem('keepInCurrent', JSON.stringify([...keepInCurrent])); } catch {}
+}
+
+let pendingCategoryMarks = {};
+LB_CATEGORIES.forEach(c => { pendingCategoryMarks[c.key] = { positive: new Set(), negative: new Set() }; });
+
+function pendingCategoryCount() {
+  let n = 0;
+  for (const c of LB_CATEGORIES) {
+    n += pendingCategoryMarks[c.key].positive.size + pendingCategoryMarks[c.key].negative.size;
+  }
+  return n;
+}
+
+function isCategoryPending(id) {
+  for (const c of LB_CATEGORIES) {
+    if (pendingCategoryMarks[c.key].positive.has(id) ||
+        pendingCategoryMarks[c.key].negative.has(id)) return true;
+  }
+  return false;
+}
+
+function pendingCategoryStatusFor(id) {
+  const out = [];
+  for (const c of LB_CATEGORIES) {
+    if (pendingCategoryMarks[c.key].positive.has(id)) out.push([c.key, 'positive']);
+    if (pendingCategoryMarks[c.key].negative.has(id)) out.push([c.key, 'negative']);
+  }
+  return out;
+}
+
+function syncCategoryPendingUI(id) {
+  const pend = isCategoryPending(id);
+  const cardEl = document.getElementById('card-' + id);
+  if (cardEl) cardEl.classList.toggle('cat-pending', pend);
+  // sync thumb in lightbox if open
+  if (lbPageItems && lbPageItems.length) {
+    const idx = lbPageItems.findIndex(x => x.id === id);
+    if (idx >= 0) {
+      const track = document.getElementById('lb-thumbs-track');
+      if (track && track.children[idx]) {
+        track.children[idx].classList.toggle('cat-pending', pend);
+      }
+    }
+  }
+}
+
+function persistCategoryMarks() {
+  try {
+    const flat = {};
+    for (const c of LB_CATEGORIES) {
+      flat[c.key] = {
+        positive: [...categoryMarks[c.key].positive],
+        negative: [...categoryMarks[c.key].negative],
+      };
+    }
+    localStorage.setItem('categoryMarks', JSON.stringify(flat));
+  } catch {}
+}
+
+function totalCategoryCount() {
+  let n = 0;
+  for (const c of LB_CATEGORIES) {
+    n += categoryMarks[c.key].positive.size + categoryMarks[c.key].negative.size;
+  }
+  return n;
+}
+
+function updateExportCatBtn() {
+  const btn = document.getElementById('export-cat-btn');
+  const cnt = document.getElementById('export-cat-cnt');
+  if (!btn || !cnt) return;
+  cnt.textContent = totalCategoryCount();
+  btn.disabled = totalCategoryCount() === 0;
+}
+
+function _categoryStatusFor(id) {
+  const out = [];
+  for (const c of LB_CATEGORIES) {
+    if (categoryMarks[c.key].positive.has(id)) out.push([c.key, 'positive']);
+    if (categoryMarks[c.key].negative.has(id)) out.push([c.key, 'negative']);
+  }
+  return out;
+}
+
+function addToCategoryMark(catKey, status) {
+  if (!lbCurrent) return;
+  if (!catKey || !pendingCategoryMarks[catKey]) return;
+  // Stage as pending — committed to persisted categoryMarks only on Save.
+  pendingCategoryMarks[catKey].positive.delete(lbCurrent.id);
+  pendingCategoryMarks[catKey].negative.delete(lbCurrent.id);
+  pendingCategoryMarks[catKey][status].add(lbCurrent.id);
+  syncCategoryPendingUI(lbCurrent.id);
+  _renderLbCatStatus();
+  updateDirty();
+  _lbFlash(status === 'positive' ? 'lb-flash' : 'lb-flash-del');
+}
+
+function clearCategoryMark(catKey) {
+  if (!lbCurrent) return;
+  if (!catKey || !pendingCategoryMarks[catKey]) return;
+  pendingCategoryMarks[catKey].positive.delete(lbCurrent.id);
+  pendingCategoryMarks[catKey].negative.delete(lbCurrent.id);
+  syncCategoryPendingUI(lbCurrent.id);
+  _renderLbCatStatus();
+  updateDirty();
+}
+
+function toggleKeepInCurrent() {
+  if (!lbCurrent) return;
+  const cb = document.getElementById('lb-keep-current-cb');
+  if (!cb) return;
+  if (cb.checked) keepInCurrent.add(lbCurrent.id);
+  else            keepInCurrent.delete(lbCurrent.id);
+  persistKeepInCurrent();
+}
+
+function _renderLbCatStatus() {
+  const el = document.getElementById('lb-cat-status');
+  if (!el || !lbCurrent) return;
+  const committed = _categoryStatusFor(lbCurrent.id);
+  const pending = pendingCategoryStatusFor(lbCurrent.id);
+
+  // Highlight active buttons and category names in the 5-row list
+  const committedMap = Object.fromEntries(committed);
+  const pendingMap = Object.fromEntries(pending);
+  for (const c of LB_CATEGORIES) {
+    const nameEl = document.getElementById('lb-cat-name-' + c.key);
+    const posEl  = document.getElementById('lb-cat-pos-' + c.key);
+    const negEl  = document.getElementById('lb-cat-neg-' + c.key);
+    if (!nameEl || !posEl || !negEl) continue;
+    nameEl.classList.remove('has-pending', 'has-committed', 'pos', 'neg');
+    posEl.classList.remove('active', 'pending');
+    negEl.classList.remove('active', 'pending');
+    if (pendingMap[c.key] === 'positive') { posEl.classList.add('pending'); nameEl.classList.add('has-pending'); }
+    else if (pendingMap[c.key] === 'negative') { negEl.classList.add('pending'); nameEl.classList.add('has-pending'); }
+    if (committedMap[c.key] === 'positive') { posEl.classList.add('active'); nameEl.classList.add('has-committed', 'pos'); }
+    else if (committedMap[c.key] === 'negative') { negEl.classList.add('active'); nameEl.classList.add('has-committed', 'neg'); }
+  }
+
+  // Status line below the list
+  if (!committed.length && !pending.length) {
+    el.innerHTML = '<span style="color:#555">- ещё не категоризовано</span>';
+  } else {
+    const labels = Object.fromEntries(LB_CATEGORIES.map(c => [c.key, c.label]));
+    const parts = [];
+    committed.forEach(([k, s]) => {
+      parts.push(`<span class="cat-tag ${s === 'positive' ? 'pos' : 'neg'}">${labels[k]} ${s === 'positive' ? '+' : '-'}</span>`);
+    });
+    pending.forEach(([k, s]) => {
+      parts.push(`<span class="cat-tag" style="color:#c060ff;border:1px dashed #c060ff;background:#231823">${labels[k]} ${s === 'positive' ? '+' : '-'} (ожидает Сохранить)</span>`);
+    });
+    el.innerHTML = parts.join(' ');
+  }
+
+  // Keep-in-current checkbox: visible only when item has any pending or committed mark
+  const hasAnyMark = committed.length > 0 || pending.length > 0;
+  const row = document.getElementById('lb-keep-current-row');
+  const cb  = document.getElementById('lb-keep-current-cb');
+  if (row && cb) {
+    row.classList.toggle('visible', hasAnyMark);
+    cb.checked = keepInCurrent.has(lbCurrent.id);
+  }
+}
+
+function exportCategories() {
+  if (!totalCategoryCount()) return;
+  const items_by_cat = {};
+  for (const c of LB_CATEGORIES) {
+    const pos = [...categoryMarks[c.key].positive].map(id => {
+      const r = allData.find(x => x.id === id);
+      return r ? _exportPayloadFor(r) : { id };
+    });
+    const neg = [...categoryMarks[c.key].negative].map(id => {
+      const r = allData.find(x => x.id === id);
+      return r ? _exportPayloadFor(r) : { id };
+    });
+    if (pos.length || neg.length) {
+      items_by_cat[c.key] = { label: c.label, positive: pos, negative: neg };
+    }
+  }
+  const payload = {
+    exported_at: new Date().toISOString(),
+    total: totalCategoryCount(),
+    by_category: items_by_cat,
+  };
+  const json = JSON.stringify(payload, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  a.href = url; a.download = `categories_${stamp}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function updateExportBtn() {
   const btn = document.getElementById('export-btn');
   const cnt = document.getElementById('export-cnt');
@@ -2001,6 +2317,7 @@ function toggleMark(id) {
   }
   updateStats();
   updateExportBtn();
+  updateExportCatBtn();
 }
 let evalData = {}, evalActive = false, evalVersion = 'v8';
 
@@ -2664,6 +2981,7 @@ function matchAge(ageFrom, f) {
 }
 
 function applyFilter() {
+  currentDomain = (document.getElementById('f-category') || {}).value || 'underage';
   const sf  = document.getElementById('f-source').value;
   const ssf = document.getElementById('f-session').value;
   const lf  = document.getElementById('f-label').value;
@@ -2681,6 +2999,24 @@ function applyFilter() {
   let d = allData;
   if (holdoutMode) d = d.filter(isInHoldout);
 
+  // Domain filter: route items between Underage (default) and other categories.
+  // When a non-underage category is selected, show ONLY items moved into that
+  // category via the lightbox sidebar (positive OR negative).
+  // When Underage is active, hide items that have been categorised elsewhere.
+  if (currentDomain !== 'underage' && categoryMarks[currentDomain]) {
+    const cm = categoryMarks[currentDomain];
+    d = d.filter(r => cm.positive.has(r.id) || cm.negative.has(r.id));
+  } else if (currentDomain === 'underage') {
+    d = d.filter(r => {
+      if (keepInCurrent.has(r.id)) return true;   // user opted to keep in Underage
+      for (const c of LB_CATEGORIES) {
+        if (categoryMarks[c.key].positive.has(r.id) ||
+            categoryMarks[c.key].negative.has(r.id)) return false;
+      }
+      return true;
+    });
+  }
+
   if (sf === 'marked')      d = d.filter(r => marked.has(r.id));
   else if (sf === 'labelstudio') d = d.filter(r => r.source === 'labelstudio');
   else if (sf === 'grafana') d = d.filter(r => r.source === 'grafana');
@@ -2689,9 +3025,21 @@ function applyFilter() {
   if (sf !== 'labelstudio' && ssf !== 'all')
     d = d.filter(r => r.session === ssf);
 
-  if (lf === 'unlabeled')   d = d.filter(r => !effectiveLabel(r));
-  else if (lf === 'unconfirmed') d = d.filter(r => r.source === 'grafana' && !r.label_confirmed && effectiveLabel(r));
-  else if (lf !== 'all')   d = d.filter(r => effectiveLabel(r) === lf);
+  if (currentDomain !== 'underage') {
+    // Non-underage: label filter maps to pending+committed status in current category
+    const cm = categoryMarks[currentDomain] || { positive: new Set(), negative: new Set() };
+    const pm = pendingCategoryMarks[currentDomain] || { positive: new Set(), negative: new Set() };
+    const inPos = id => cm.positive.has(id) || pm.positive.has(id);
+    const inNeg = id => cm.negative.has(id) || pm.negative.has(id);
+    if (lf === 'positive')      d = d.filter(r => inPos(r.id));
+    else if (lf === 'negative') d = d.filter(r => inNeg(r.id));
+    else if (lf === 'unlabeled') d = d.filter(r => !inPos(r.id) && !inNeg(r.id));
+    // 'all' → no filter
+  } else {
+    if (lf === 'unlabeled')   d = d.filter(r => !effectiveLabel(r));
+    else if (lf === 'unconfirmed') d = d.filter(r => r.source === 'grafana' && !r.label_confirmed && effectiveLabel(r));
+    else if (lf !== 'all')   d = d.filter(r => effectiveLabel(r) === lf);
+  }
 
 
   // Eval outcome filter
@@ -2811,6 +3159,7 @@ function renderCard(r) {
   markBtn.onclick = e => { e.stopPropagation(); toggleMark(r.id); };
   wrap.appendChild(markBtn);
   if (marked.has(r.id)) card.classList.add('marked');
+  if (isCategoryPending(r.id)) card.classList.add('cat-pending');
 
   // Source badge
   const sbadge = document.createElement('div');
@@ -2914,14 +3263,39 @@ function renderCard(r) {
 
   // Label radios
   const radios = document.createElement('div'); radios.className = 'radios';
-  [['child','Дети'],['teen','Подр.'],['adult','Взрослые']].forEach(([lbl, name]) => {
-    const label = document.createElement('label'); label.className = 'cat-' + lbl;
-    const inp = document.createElement('input');
-    inp.type = 'radio'; inp.name = 'lbl-' + r.id; inp.value = lbl; inp.checked = (curLabel === lbl);
-    inp.addEventListener('change', () => onLabelChange(r, lbl));
-    label.append(inp, Object.assign(document.createElement('span'), {textContent: name}));
-    radios.appendChild(label);
-  });
+  if (currentDomain === 'underage') {
+    [['child','Дети'],['teen','Подр.'],['adult','Взрослые']].forEach(([lbl, name]) => {
+      const label = document.createElement('label'); label.className = 'cat-' + lbl;
+      const inp = document.createElement('input');
+      inp.type = 'radio'; inp.name = 'lbl-' + r.id; inp.value = lbl; inp.checked = (curLabel === lbl);
+      inp.addEventListener('change', () => onLabelChange(r, lbl));
+      label.append(inp, Object.assign(document.createElement('span'), {textContent: name}));
+      radios.appendChild(label);
+    });
+  } else {
+    // Non-underage: Positive / Negative radios bound to addToCategoryMark for the active domain
+    const cm = categoryMarks[currentDomain] || { positive: new Set(), negative: new Set() };
+    const pm = pendingCategoryMarks[currentDomain] || { positive: new Set(), negative: new Set() };
+    const curStatus =
+      pm.positive.has(r.id) ? 'positive' :
+      pm.negative.has(r.id) ? 'negative' :
+      cm.positive.has(r.id) ? 'positive' :
+      cm.negative.has(r.id) ? 'negative' : null;
+    [['positive','Positive'],['negative','Negative']].forEach(([st, name]) => {
+      const label = document.createElement('label'); label.className = 'cat-' + st;
+      const inp = document.createElement('input');
+      inp.type = 'radio'; inp.name = 'lbl-' + r.id; inp.value = st; inp.checked = (curStatus === st);
+      inp.addEventListener('change', () => {
+        // Set this card as the "lightbox current" target so addToCategoryMark works without opening lb
+        const prev = lbCurrent;
+        lbCurrent = r;
+        addToCategoryMark(currentDomain, st);
+        lbCurrent = prev;
+      });
+      label.append(inp, Object.assign(document.createElement('span'), {textContent: name}));
+      radios.appendChild(label);
+    });
+  }
 
   card.append(wrap, info, promptRow, radios);
 
@@ -2992,16 +3366,18 @@ function toggleHide(id, source) {
 }
 
 function updateDirty() {
-  const n = Object.keys(changes).length + hidden.size + toConfirm.size;
+  const npc = pendingCategoryCount();
+  const n = Object.keys(changes).length + hidden.size + toConfirm.size + npc;
   const btn = document.getElementById('save-btn');
   const cbtn = document.getElementById('confirm-btn');
   if (n > 0) {
     btn.className = 'dirty';
     const parts = [];
     const nc = Object.keys(changes).length;
-    if (nc)            parts.push('изм.: ' + nc);
-    if (hidden.size)   parts.push('удал.: ' + hidden.size);
-    if (toConfirm.size) parts.push('подтв.: ' + toConfirm.size);
+    if (nc)              parts.push('изм.: ' + nc);
+    if (hidden.size)     parts.push('удал.: ' + hidden.size);
+    if (toConfirm.size)  parts.push('подтв.: ' + toConfirm.size);
+    if (npc)             parts.push('кат.: ' + npc);
     btn.textContent = '💾 Сохранить (' + parts.join('  ') + ')';
     document.getElementById('status').textContent = parts.join('  ');
   } else {
@@ -3081,6 +3457,25 @@ async function saveChanges() {
         if (cb) { cb.className = 'confirm-badge human'; cb.textContent = '✓'; cb.title = 'Подтверждено'; }
       }
     }
+    // Apply staged category moves: pending → committed (persisted localStorage)
+    for (const c of LB_CATEGORIES) {
+      for (const id of pendingCategoryMarks[c.key].positive) {
+        categoryMarks[c.key].negative.delete(id);
+        categoryMarks[c.key].positive.add(id);
+      }
+      for (const id of pendingCategoryMarks[c.key].negative) {
+        categoryMarks[c.key].positive.delete(id);
+        categoryMarks[c.key].negative.add(id);
+      }
+      pendingCategoryMarks[c.key].positive.clear();
+      pendingCategoryMarks[c.key].negative.clear();
+    }
+    persistCategoryMarks();
+    updateExportCatBtn();
+    // Strip the .cat-pending grey-out from all cards now that they're committed
+    document.querySelectorAll('.card.cat-pending').forEach(el => el.classList.remove('cat-pending'));
+    document.querySelectorAll('.lb-thumb.cat-pending').forEach(el => el.classList.remove('cat-pending'));
+
     changes = {}; hidden.clear(); toConfirm.clear();
     // Keep viewedIds across saves — глазик остаётся как индикатор сеансовой истории.
     document.getElementById('save-btn').className = '';
@@ -3160,6 +3555,7 @@ function renderLbThumbs() {
     if (idx === lbCurrentIdx) tCls += ' current';
     if (hidden.has(r.id)) tCls += ' hidden-pending';
     if (marked.has(r.id)) tCls += ' marked';
+    if (isCategoryPending(r.id)) tCls += ' cat-pending';
     t.className = tCls;
     t.dataset.idx = String(idx);
     const img = document.createElement('img');
@@ -3174,6 +3570,12 @@ function renderLbThumbs() {
     } else if (lbl === 'child' || lbl === 'teen' || lbl === 'adult') {
       const d = document.createElement('div'); d.className = 'lb-thumb-dot ' + lbl;
       t.appendChild(d);
+    }
+    if (isCategoryPending(r.id)) {
+      const dc = document.createElement('div'); dc.className = 'lb-thumb-dot cat';
+      // place to bottom-right so it doesn't collide with the label/del dot in top-right
+      dc.style.top = 'auto'; dc.style.bottom = '2px';
+      t.appendChild(dc);
     }
     t.onclick = () => {
       lbCurrentIdx = idx;
@@ -3197,6 +3599,7 @@ function highlightCurrentThumb() {
     if (!r) continue;
     kids[i].classList.toggle('hidden-pending', hidden.has(r.id));
     kids[i].classList.toggle('marked', marked.has(r.id));
+    kids[i].classList.toggle('cat-pending', isCategoryPending(r.id));
     const existing = kids[i].querySelector('.lb-thumb-dot');
     if (existing) existing.remove();
     const lbl = effectiveLabel(r);
@@ -3333,6 +3736,58 @@ function renderLbView() {
     `<div class="lb-row lb-section"><span class="lb-k">⭐ marked</span>` +
       `<span class="lb-v" style="cursor:pointer;color:${marked.has(r.id) ? '#ffd040' : '#666'}"` +
         ` onclick="toggleMark('${r.id}')">${marked.has(r.id) ? '★ ДА (5/m)' : '☆ нет (5/m)'}</span></div>`;
+
+  // Category mark block — list of 5 categories with per-row pos/neg buttons.
+  // One item can be in multiple categories at once.
+  const catRows = LB_CATEGORIES.map(c => {
+    return `<div class="lb-cat-row-item" data-cat="${c.key}">` +
+      `<span class="lb-cat-name" id="lb-cat-name-${c.key}">${c.label}</span>` +
+      `<button class="lb-cat-btn pos" id="lb-cat-pos-${c.key}" ` +
+              `onclick="addToCategoryMark('${c.key}','positive')" title="Add as positive">+pos</button>` +
+      `<button class="lb-cat-btn neg" id="lb-cat-neg-${c.key}" ` +
+              `onclick="addToCategoryMark('${c.key}','negative')" title="Add as negative">-neg</button>` +
+    `</div>`;
+  }).join('');
+  const catBlock =
+    `<div class="lb-row lb-section"><span class="lb-k">-> category</span><span></span></div>` +
+    `<div id="lb-cat-block">` +
+      `<div class="lb-cat-list">${catRows}</div>` +
+      `<div id="lb-cat-status"></div>` +
+      `<label id="lb-keep-current-row" title="Оставить изображение видимым в текущей категории галереи (например, в Underage) даже после перемещения">` +
+        `<input type="checkbox" id="lb-keep-current-cb" onchange="toggleKeepInCurrent()">` +
+        `<span>💾 сохранить также в текущей категории</span>` +
+      `</label>` +
+    `</div>`;
+  document.getElementById('lb-info').insertAdjacentHTML('beforeend', catBlock);
+  _renderLbCatStatus();
+
+  // Disagree frame: orange outline on image when an INACTIVE model strongly outscores Tom
+  // (active-learning hint). Only when disagreement sort is on and item is NOT confirmed.
+  const lbWrap = document.getElementById('lb-wrap');
+  if (lbWrap) {
+    let maxDiff = 0;
+    const tomScore = (e['k30tom'] || {}).lgbm;
+    const isConfirmed = changes[r.id] ? true : !!r.label_confirmed;
+    if (disagreeMode && tomScore != null && !isConfirmed) {
+      for (const v of ['v6','v8','v11']) {
+        if (v === evalVersion) continue;
+        const ev = e[v];
+        if (!ev || ev.lgbm == null) continue;
+        const diff = ev.lgbm - tomScore;
+        if (diff >= 0.2 && diff > maxDiff) maxDiff = diff;
+      }
+    }
+    if (maxDiff >= 0.2) {
+      const op = Math.min(1.0, 0.4 + (maxDiff - 0.2) * 2);
+      lbWrap.style.setProperty('--lb-disagree-color', `rgba(255, 130, 0, ${op.toFixed(2)})`);
+      lbWrap.classList.add('lb-disagree-frame');
+      lbWrap.title = `Disagree frame: inactive model is +${maxDiff.toFixed(2)} over Tom`;
+    } else {
+      lbWrap.classList.remove('lb-disagree-frame');
+      lbWrap.style.removeProperty('--lb-disagree-color');
+      lbWrap.removeAttribute('title');
+    }
+  }
 
   // Keep thumb strip in sync with current item / labels / deletion mark
   highlightCurrentThumb();
@@ -3535,6 +3990,32 @@ function buildEvalRow(r) {
 
 function renderEvalRowContent(row, r) {
   row.innerHTML = '';
+  // For non-underage/bestiality domains, LGBM data isn't trained for that policy.
+  // Show top-5 siglip2 underage labels as a generic semantic snapshot instead.
+  if (currentDomain && currentDomain !== 'underage' && currentDomain !== 'bestiality') {
+    const pr = r.piper_result || {};
+    const det = ((pr.siglip2_details || {}).underage || {});
+    const labels = (det.labels || {}).underage || {};
+    const adultLabels = (det.labels || {}).adult || {};
+    const merged = { ...labels, ...adultLabels };
+    const top = Object.entries(merged)
+      .filter(([k,v]) => typeof v === 'number')
+      .sort((a,b) => b[1]-a[1])
+      .slice(0, 5);
+    const box = document.createElement('div');
+    box.style.cssText = 'font-size:9px;color:#888;padding:4px 7px;line-height:1.5;';
+    if (!top.length) {
+      box.textContent = '— siglip2 нет данных';
+    } else {
+      box.innerHTML = '<span style="color:#666;text-transform:uppercase;font-size:8px;letter-spacing:.4px">siglip2 top-5</span><br>' +
+        top.map(([k,v]) =>
+          `<span style="color:#aaa">${k.replace(/_/g,' ')}</span> ` +
+          `<span style="color:${v >= 0.5 ? '#ff8060' : '#9080a0'}">${v.toFixed(3)}</span>`
+        ).join('  ·  ');
+    }
+    row.appendChild(box);
+    return;
+  }
   const allVersionData = evalData[r.id] || {};
   const ev6   = allVersionData['v6']    || null;
   const ev8   = allVersionData['v8']    || null;
@@ -3771,6 +4252,57 @@ document.getElementById('f-age-fd').addEventListener('change', applyFilter);
 document.getElementById('f-pgsize').addEventListener('change', () => {
   currentPage = 1; renderPage();
 });
+
+// Domain category — switches the gallery context, hides irrelevant filters.
+function refreshDomainUI() {
+  const cat = (document.getElementById('f-category') || {}).value || 'underage';
+
+  // Rebuild f-label options for this domain
+  const labelSel = document.getElementById('f-label');
+  if (labelSel) {
+    const prevValue = labelSel.value;
+    const optsUnderage = [
+      { v: 'all',         t: 'Все' },
+      { v: 'unlabeled',   t: 'Без разметки' },
+      { v: 'unconfirmed', t: '⚡ Не подтверждено' },
+      { v: 'child',       t: 'child' },
+      { v: 'teen',        t: 'teen' },
+      { v: 'adult',       t: 'adult' },
+    ];
+    const optsOther = [
+      { v: 'all',       t: 'Все' },
+      { v: 'unlabeled', t: 'Без разметки' },
+      { v: 'positive',  t: 'Positive' },
+      { v: 'negative',  t: 'Negative' },
+    ];
+    const opts = (cat === 'underage') ? optsUnderage : optsOther;
+    labelSel.innerHTML = opts.map(o =>
+      `<option value="${o.v}">${o.t}</option>`).join('');
+    // Try to keep previous value; fall back to 'all'
+    const hasPrev = opts.some(o => o.v === prevValue);
+    labelSel.value = hasPrev ? prevValue : 'all';
+  }
+
+  // Age filters: only meaningful in Underage
+  const showAge = (cat === 'underage');
+  const aq = document.getElementById('age-q3-wrap');
+  const af = document.getElementById('age-fd-wrap');
+  if (aq) aq.style.display = showAge ? '' : 'none';
+  if (af) af.style.display = showAge ? '' : 'none';
+  // LGBM panel: only categories that have a deployed LGBM model
+  const hasLgbm = (cat === 'underage' || cat === 'bestiality');
+  const ev = document.getElementById('eval-wrap');
+  if (ev) ev.style.display = hasLgbm ? 'flex' : 'none';
+  // For non-Underage we don't track lightbox moderation hotkeys to grafana_confirm — that flow is Underage-specific.
+  // The Save button + Export buttons stay visible always.
+}
+document.getElementById('f-category').addEventListener('change', () => {
+  refreshDomainUI();
+  currentPage = 1;
+  applyFilter();    // applyFilter calls renderPage which re-renders all cards (so radios + eval rows refresh)
+});
+// initial setup
+refreshDomainUI();
 document.getElementById('thr-v8').addEventListener('input',  () => onThrSlide('v8'));
 document.getElementById('thr-v11').addEventListener('input', () => onThrSlide('v11'));
 document.getElementById('thr-v6').addEventListener('input',  () => onThrSlide('v6'));

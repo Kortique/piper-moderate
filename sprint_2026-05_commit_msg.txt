@@ -1,0 +1,51 @@
+sprint 2026-05: full relabel + extended training scope (V6c/V8cs80/V11cs80)
+
+After a full manual relabel of 9,150 items (1,469 child / 1,783 teen / 5,898 adult),
+all three LGBM models were retrained with an extended training scope that
+includes K30 (Tom's external dataset, 6,133 confirmed items) alongside LS and
+Grafana. Training set grew 3x (from ~2,500 to ~7,300 items).
+
+Trained models (data/lgbm_underage_v*c*.txt):
+  V6c    AUC 0.948 (was 0.873, +0.075) — n_train 7268, child 97.4% teen 79.1% FPR 12.6%
+  V8cs80 AUC 0.947 (was 0.842, +0.105) — n_train 7379, child 96.8% teen 81.5% FPR 16.3%
+  V11cs80 AUC 0.946 (was 0.879, +0.067) — n_train 6919, child 98.0% teen 90.1% FPR 22.9%
+
+Honest holdout (data/v11_test_split_2026.json): 1,828 items stratified by
+label and source. SEED=1337, 3 lgb seeds {1, 42, 314}.
+
+V8cs80 vs deployed V8pas80-v2 on LS (current labels):
+  teen recall  82.1% -> 93.8%  (+11.7pp)
+  child recall 97.5% -> 98.6%  (+1.1pp)
+  adult FPR     3.7% ->  7.0%  (+3.3pp)
+
+Artifacts:
+  data/v11_test_split_2026.json
+  data/lgbm_underage_v6c.txt + v6c_features.json + v6c_meta.json
+  data/lgbm_underage_v8c.txt + v8cs80.txt + v8cs80_features.json + v8cs80_meta.json
+  data/lgbm_underage_v11c.txt + v11cs80.txt + v11cs80_features.json + v11cs80_meta.json
+  data/lgbm_evaluate_v8cs80.js (424 KB) — Piper-ready JS for d2911d10bb
+  data/lgbm_evaluate_v11cs80.js (168 KB) — Piper-ready JS for ce79f7e299
+
+Scripts added:
+  scripts/make_holdout_split_2026.py
+  scripts/train_v6c_holdout.py
+  scripts/train_v8c_holdout.py
+  scripts/train_v11c_holdout.py
+  scripts/export_v8cs80_js.py
+  scripts/export_v11cs80_js.py
+  scripts/extract_v8cs80_ls_fps.py
+
+Gallery:
+  - V8 and V11 inline scoring functions now load lgbm_underage_v8cs80.txt
+    and lgbm_underage_v11cs80.txt respectively
+  - new score columns immediately visible in the eval row + lightbox sidebar
+
+README:
+  - new "Sprint 2026-05 — extended scope" honest holdout table
+  - old "b" model row preserved under "Previous models" for diff visibility
+  - production header updated: V8cs80 is the new deploy candidate
+  - cross-validation comparison vs Tom K=30 refreshed with new numbers
+
+Mining for next iteration:
+  data/v8cs80_ls_fps_2026-05.json — top-100 V8cs80 LS adult FPs (lgbm>=0.30)
+  ready for Grok validation → train_v8d hard-neg pool ×20

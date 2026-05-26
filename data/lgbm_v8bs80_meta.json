@@ -2,56 +2,56 @@
   "version": "v8bs80",
   "parent": "v8b (V8pas80-v2 re-trained excluding v11_test_split)",
   "split": "data/v11_test_split.json (SEED=1337, stratified 80/20 by V11 training data)",
-  "n_train": 1884,
-  "n_test": 438,
+  "n_train": 1841,
+  "n_test": 429,
   "test_source_breakdown": {
-    "ls": 438,
+    "ls": 429,
     "grafana": 0
   },
   "note": "V8 trains on qwen3 LS only \u2014 the universal holdout contains 438 LS items (V8 saw these in original training; this re-train excludes them).",
   "multi_seed_full": {
     "auc": {
-      "mean": 0.8425172458084941,
-      "std": 0.004093986072915515
+      "mean": 0.8456450956450956,
+      "std": 0.0022738278291562653
     },
     "child_recall": {
-      "mean": 0.9135802469135803,
+      "mean": 0.9197530864197532,
       "std": 0.008729713347982055
     },
     "teen_recall": {
-      "mean": 0.5889967637540453,
-      "std": 0.01650168127376305
+      "mean": 0.5849673202614379,
+      "std": 0.0046216129489316665
     },
     "adult_fpr": {
-      "mean": 0.18386714116251482,
-      "std": 0.007312472126890837
+      "mean": 0.18925518925518925,
+      "std": 0.011323099506099759
     },
     "per_seed": [
       {
         "seed": 1,
-        "auc": 0.8466350839812317,
+        "auc": 0.8462477693246923,
         "child_recall": 0.9259259259259259,
-        "teen_recall": 0.6116504854368932,
-        "adult_fpr": 0.19217081850533807,
+        "teen_recall": 0.5784313725490197,
+        "adult_fpr": 0.20512820512820512,
         "counts": {
           "n_child": 54,
-          "n_teen": 103,
-          "n_adult": 281,
+          "n_teen": 102,
+          "n_adult": 273,
           "blk_child": 50,
-          "blk_teen": 63,
-          "blk_adult": 54
+          "blk_teen": 59,
+          "blk_adult": 56
         }
       },
       {
         "seed": 42,
-        "auc": 0.8439830450846612,
+        "auc": 0.8426082464544004,
         "child_recall": 0.9074074074074074,
-        "teen_recall": 0.5825242718446602,
-        "adult_fpr": 0.17437722419928825,
+        "teen_recall": 0.5882352941176471,
+        "adult_fpr": 0.1794871794871795,
         "counts": {
           "n_child": 54,
-          "n_teen": 103,
-          "n_adult": 281,
+          "n_teen": 102,
+          "n_adult": 273,
           "blk_child": 49,
           "blk_teen": 60,
           "blk_adult": 49
@@ -59,102 +59,102 @@
       },
       {
         "seed": 314,
-        "auc": 0.8369336083595893,
-        "child_recall": 0.9074074074074074,
-        "teen_recall": 0.5728155339805825,
-        "adult_fpr": 0.18505338078291814,
+        "auc": 0.8480792711561941,
+        "child_recall": 0.9259259259259259,
+        "teen_recall": 0.5882352941176471,
+        "adult_fpr": 0.18315018315018314,
         "counts": {
           "n_child": 54,
-          "n_teen": 103,
-          "n_adult": 281,
-          "blk_child": 49,
-          "blk_teen": 59,
-          "blk_adult": 52
+          "n_teen": 102,
+          "n_adult": 273,
+          "blk_child": 50,
+          "blk_teen": 60,
+          "blk_adult": 50
         }
       }
     ]
   },
   "multi_seed_slim": {
     "auc": {
-      "mean": 0.8415274535137627,
-      "std": 0.004231078721433822
+      "mean": 0.8441344979806518,
+      "std": 0.0007285355047256001
     },
     "child_recall": {
       "mean": 0.9197530864197532,
-      "std": 0.008729713347982055
+      "std": 0.01745942669596411
     },
     "teen_recall": {
-      "mean": 0.5954692556634303,
-      "std": 0.009153485840602554
+      "mean": 0.5816993464052288,
+      "std": 0.04029028760110442
     },
     "adult_fpr": {
-      "mean": 0.20166073546856467,
-      "std": 0.001677596159398697
+      "mean": 0.18437118437118438,
+      "std": 0.011323099506099754
     },
     "per_seed": [
       {
         "seed": 1,
-        "auc": 0.8474737629485233,
-        "child_recall": 0.9074074074074074,
-        "teen_recall": 0.6019417475728155,
-        "adult_fpr": 0.20284697508896798,
+        "auc": 0.8448858833474218,
+        "child_recall": 0.9444444444444444,
+        "teen_recall": 0.5882352941176471,
+        "adult_fpr": 0.1684981684981685,
         "counts": {
           "n_child": 54,
-          "n_teen": 103,
-          "n_adult": 281,
-          "blk_child": 49,
-          "blk_teen": 62,
-          "blk_adult": 57
+          "n_teen": 102,
+          "n_adult": 273,
+          "blk_child": 51,
+          "blk_teen": 60,
+          "blk_adult": 46
         }
       },
       {
         "seed": 42,
-        "auc": 0.8379762903189247,
-        "child_recall": 0.9259259259259259,
-        "teen_recall": 0.5825242718446602,
-        "adult_fpr": 0.199288256227758,
+        "auc": 0.8431483046867662,
+        "child_recall": 0.9074074074074074,
+        "teen_recall": 0.5294117647058824,
+        "adult_fpr": 0.19047619047619047,
         "counts": {
           "n_child": 54,
-          "n_teen": 103,
-          "n_adult": 281,
-          "blk_child": 50,
-          "blk_teen": 60,
-          "blk_adult": 56
+          "n_teen": 102,
+          "n_adult": 273,
+          "blk_child": 49,
+          "blk_teen": 54,
+          "blk_adult": 52
         }
       },
       {
         "seed": 314,
-        "auc": 0.83913230727384,
-        "child_recall": 0.9259259259259259,
-        "teen_recall": 0.6019417475728155,
-        "adult_fpr": 0.20284697508896798,
+        "auc": 0.8443693059077674,
+        "child_recall": 0.9074074074074074,
+        "teen_recall": 0.6274509803921569,
+        "adult_fpr": 0.19413919413919414,
         "counts": {
           "n_child": 54,
-          "n_teen": 103,
-          "n_adult": 281,
-          "blk_child": 50,
-          "blk_teen": 62,
-          "blk_adult": 57
+          "n_teen": 102,
+          "n_adult": 273,
+          "blk_child": 49,
+          "blk_teen": 64,
+          "blk_adult": 53
         }
       }
     ]
   },
   "by_source_slim": {
     "ls": {
-      "n": 438,
-      "auc": 0.83913230727384,
-      "child_recall": 0.9259259259259259,
-      "teen_recall": 0.6019417475728155,
-      "adult_fpr": 0.20284697508896798,
+      "n": 429,
+      "auc": 0.8443693059077674,
+      "child_recall": 0.9074074074074074,
+      "teen_recall": 0.6274509803921569,
+      "adult_fpr": 0.19413919413919414,
       "counts": {
         "n_child": 54,
-        "n_teen": 103,
-        "n_adult": 281,
-        "blk_child": 50,
-        "blk_teen": 62,
-        "blk_adult": 57
+        "n_teen": 102,
+        "n_adult": 273,
+        "blk_child": 49,
+        "blk_teen": 64,
+        "blk_adult": 53
       }
     }
   },
-  "trained_at": "2026-05-23T06:55:37.917049"
+  "trained_at": "2026-05-26T15:12:34.612665"
 }

@@ -1,0 +1,187 @@
+{
+  "version": "v11cs80",
+  "parent": "v11c (extended scope LS+Grafana+K30, v11 native input)",
+  "split": "data/v11_test_split_2026.json (SEED=1337, stratified by label+source)",
+  "n_train": 6919,
+  "n_test": 1722,
+  "multi_seed_full": {
+    "auc": {
+      "mean": 0.9460005198317777,
+      "std": 6.740408681496546e-05
+    },
+    "child_recall": {
+      "mean": 0.9825870646766169,
+      "std": 0.0017589720925038283
+    },
+    "teen_recall": {
+      "mean": 0.8866666666666667,
+      "std": 0.0071269664509979805
+    },
+    "adult_fpr": {
+      "mean": 0.22946859903381642,
+      "std": 0.0011297274718520404
+    },
+    "per_seed": [
+      {
+        "seed": 1,
+        "auc": 0.94605670465738,
+        "child_recall": 0.9813432835820896,
+        "teen_recall": 0.8942857142857142,
+        "adult_fpr": 0.22826086956521738,
+        "counts": {
+          "n_child": 268,
+          "n_teen": 350,
+          "n_adult": 1104,
+          "blk_child": 263,
+          "blk_teen": 313,
+          "blk_adult": 252
+        }
+      },
+      {
+        "seed": 42,
+        "auc": 0.946039116364148,
+        "child_recall": 0.9850746268656716,
+        "teen_recall": 0.8771428571428571,
+        "adult_fpr": 0.23097826086956522,
+        "counts": {
+          "n_child": 268,
+          "n_teen": 350,
+          "n_adult": 1104,
+          "blk_child": 264,
+          "blk_teen": 307,
+          "blk_adult": 255
+        }
+      },
+      {
+        "seed": 314,
+        "auc": 0.9459057384738052,
+        "child_recall": 0.9813432835820896,
+        "teen_recall": 0.8885714285714286,
+        "adult_fpr": 0.22916666666666666,
+        "counts": {
+          "n_child": 268,
+          "n_teen": 350,
+          "n_adult": 1104,
+          "blk_child": 263,
+          "blk_teen": 311,
+          "blk_adult": 253
+        }
+      }
+    ]
+  },
+  "multi_seed_slim": {
+    "auc": {
+      "mean": 0.9457909260040962,
+      "std": 0.0006502498377133791
+    },
+    "child_recall": {
+      "mean": 0.9800995024875622,
+      "std": 0.0017589720925038283
+    },
+    "teen_recall": {
+      "mean": 0.900952380952381,
+      "std": 0.003563483225498985
+    },
+    "adult_fpr": {
+      "mean": 0.22916666666666666,
+      "std": 0.004498690949804155
+    },
+    "per_seed": [
+      {
+        "seed": 1,
+        "auc": 0.9450116669011773,
+        "child_recall": 0.9813432835820896,
+        "teen_recall": 0.9057142857142857,
+        "adult_fpr": 0.2318840579710145,
+        "counts": {
+          "n_child": 268,
+          "n_teen": 350,
+          "n_adult": 1104,
+          "blk_child": 263,
+          "blk_teen": 317,
+          "blk_adult": 256
+        }
+      },
+      {
+        "seed": 42,
+        "auc": 0.9466034074386754,
+        "child_recall": 0.9813432835820896,
+        "teen_recall": 0.9,
+        "adult_fpr": 0.23278985507246377,
+        "counts": {
+          "n_child": 268,
+          "n_teen": 350,
+          "n_adult": 1104,
+          "blk_child": 263,
+          "blk_teen": 315,
+          "blk_adult": 257
+        }
+      },
+      {
+        "seed": 314,
+        "auc": 0.9457577036724356,
+        "child_recall": 0.9776119402985075,
+        "teen_recall": 0.8971428571428571,
+        "adult_fpr": 0.22282608695652173,
+        "counts": {
+          "n_child": 268,
+          "n_teen": 350,
+          "n_adult": 1104,
+          "blk_child": 262,
+          "blk_teen": 314,
+          "blk_adult": 246
+        }
+      }
+    ]
+  },
+  "by_source_slim": {
+    "grafana": {
+      "n": 155,
+      "auc": 0.9182484182484182,
+      "child_recall": 1.0,
+      "teen_recall": 0.9821428571428571,
+      "adult_fpr": 0.7012987012987013,
+      "counts": {
+        "n_child": 22,
+        "n_teen": 56,
+        "n_adult": 77,
+        "blk_child": 22,
+        "blk_teen": 55,
+        "blk_adult": 54
+      }
+    },
+    "k30": {
+      "n": 1139,
+      "auc": 0.9661575248877611,
+      "child_recall": 0.9788359788359788,
+      "teen_recall": 0.893048128342246,
+      "adult_fpr": 0.14678899082568808,
+      "counts": {
+        "n_child": 189,
+        "n_teen": 187,
+        "n_adult": 763,
+        "blk_child": 185,
+        "blk_teen": 167,
+        "blk_adult": 112
+      }
+    },
+    "ls": {
+      "n": 428,
+      "auc": 0.8946553954175905,
+      "child_recall": 0.9649122807017544,
+      "teen_recall": 0.8598130841121495,
+      "adult_fpr": 0.30303030303030304,
+      "counts": {
+        "n_child": 57,
+        "n_teen": 107,
+        "n_adult": 264,
+        "blk_child": 55,
+        "blk_teen": 92,
+        "blk_adult": 80
+      }
+    }
+  },
+  "n_features_full": 516,
+  "n_features_slim": 80,
+  "trained_at": "2026-05-26T15:17:46.971566"
+}
