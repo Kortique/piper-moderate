@@ -55,14 +55,15 @@ def _db_flush():
     tmp = Path('/tmp/gallery_work.db')
     if not tmp.exists():
         return
-    # Rotate backup: keep last 3 dated copies
     backup_dir = BASE_DIR / 'backups'
     backup_dir.mkdir(exist_ok=True)
     stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     shutil.copy2(tmp, backup_dir / f'gallery_{stamp}.db')
-    # Keep only last 3 backups
+    # Keep a longer trail (30 backups) so unexpected state changes — e.g.
+    # the K30 deleted-flag wipe that destroyed user work — remain recoverable.
+    # 30 × ~40MB ≈ 1.2GB worst case; ok on dev disk, prune manually if needed.
     backups = sorted(backup_dir.glob('gallery_*.db'))
-    for old in backups[:-3]:
+    for old in backups[:-30]:
         old.unlink(missing_ok=True)
     shutil.copy2(tmp, DB_PATH)
 
@@ -416,6 +417,28 @@ def load_eval_data() -> dict:
                 entry = _make_eval_entry(lgbm=v6, minor=minor, human_label=row["label"], variant=row["variant"])
                 result.setdefault(pid, {})["v6"] = entry
 
+            # borderlands_pool — same shape as grafana (local files, piper_result stored
+            # by moderate_borderlands.py with siglip2_details under the same path).
+            try:
+                for row in conn3.execute("SELECT id, label, variant, piper_result FROM borderlands_pool"):
+                    pid = row["id"]
+                    if pid in result and "v6" in result[pid]:
+                        continue
+                    pr  = json.loads(row["piper_result"]) if row["piper_result"] else {}
+                    det = pr.get("siglip2_details") or {}
+                    if not det:
+                        continue
+                    v6  = _v6_lgbm_score(det)
+                    if v6 is None:
+                        continue
+                    und   = det.get("underage", {})
+                    minor = und.get("minor", 0.0)
+                    entry = _make_eval_entry(lgbm=v6, minor=minor, human_label=row["label"], variant=row["variant"])
+                    result.setdefault(pid, {})["v6"] = entry
+            except Exception:
+                # borderlands_pool may not exist yet
+                pass
+
             # ls_images — from DB (may hit corruption on large DBs; JSON fallback below)
             for offset in range(0, 5000, 200):
                 try:
@@ -544,15 +567,84 @@ def load_eval_data() -> dict:
                     und_minor = det.get('minor', 0.0)
                 except Exception:
                     continue
-                if not u and not a:
-                    continue
+                # Don't skip on empty labels. siglip2 finding zero underage AND
+                # zero adult tags is a valid result for "completely clean" images
+                # — LGBM on a 0-vector returns a low baseline score, which is what
+                # we want to surface in the card (better than a dash). Skipping
+                # left ~163 borderlands cards without V6/V8/V11 scores even when
+                # piper_result.siglip2_details was fully populated.
                 s8 = _v8_lgbm_score(u, a)
                 if s8 is not None:
                     result.setdefault(pid, {})["v8"] = _make_eval_entry(
                         lgbm=s8, minor=und_minor,
                         human_label=row["label"], variant=row["variant"], version='v8')
 
-            # LS V8: from qwen3_age_results.json (180-tag taxonomy)
+            # Borderlands V8: same shape as grafana — piper_result.siglip2_details
+            # populated by moderate_borderlands.py through d2911d10bb (180-tag).
+            try:
+                for row in conn_inline.execute("SELECT id, label, variant, piper_result FROM borderlands_pool"):
+                    pid = row["id"]
+                    if "v8" in result.get(pid, {}):
+                        continue
+                    try:
+                        pr  = json.loads(row["piper_result"]) if row["piper_result"] else {}
+                        det = (pr.get('siglip2_details') or {}).get('underage', {})
+                        lbl_data = det.get('labels', {})
+                        u = lbl_data.get('underage', {}); a = lbl_data.get('adult', {})
+                        und_minor = det.get('minor', 0.0)
+                    except Exception:
+                        continue
+                    # See note above — don't skip on empty labels; LGBM 0-vector
+                    # baseline is the correct score for clean images.
+                    s8 = _v8_lgbm_score(u, a)
+                    if s8 is not None:
+                        result.setdefault(pid, {})["v8"] = _make_eval_entry(
+                            lgbm=s8, minor=und_minor,
+                            human_label=row["label"], variant=row["variant"], version='v8')
+            except Exception:
+                pass
+
+            # LS V8: from DB ls_images.siglip2_details — covers NEW batches
+            # imported via import_ls_batch.py + moderate_ls_batch.py (those
+            # never go through qwen3_age_results.json). Legacy LS items are
+            # in both DB and JSON; DB wins because it's authoritative.
+            try:
+                conn_v8_ls = _db_connect()
+                for offset in range(0, 50000, 500):
+                    rows_v8 = conn_v8_ls.execute("""
+                        SELECT task_id, age_from, variant, siglip2_details
+                        FROM ls_images WHERE siglip2_details IS NOT NULL
+                        LIMIT 500 OFFSET ?
+                    """, (offset,)).fetchall()
+                    if not rows_v8:
+                        break
+                    for row in rows_v8:
+                        gid = f"ls_{row['task_id']}"
+                        if "v8" in result.get(gid, {}):
+                            continue
+                        try:
+                            det = json.loads(row["siglip2_details"])
+                        except Exception:
+                            continue
+                        und = (det or {}).get('underage', {})
+                        lbl_data = und.get('labels', {})
+                        u = lbl_data.get('underage', {}); a = lbl_data.get('adult', {})
+                        # See note above — don't skip on empty labels; LGBM
+                        # 0-vector baseline is the correct score for clean images.
+                        s8 = _v8_lgbm_score(u, a)
+                        if s8 is None:
+                            continue
+                        af = row["age_from"]
+                        cat = ls_cat(af) if af is not None else None
+                        result.setdefault(gid, {})["v8"] = _make_eval_entry(
+                            lgbm=s8, minor=und.get('minor', 0.0),
+                            human_label=cat, variant=row["variant"], version='v8')
+                conn_v8_ls.close()
+            except Exception as e:
+                print(f"  V8 LS from DB error: {e}")
+
+            # LS V8: from qwen3_age_results.json (180-tag taxonomy) — fallback
+            # for items missing from DB (e.g. corruption recovery, legacy state)
             ls_json_inline = BASE_DIR / "qwen3_age_results.json"
             if ls_json_inline.exists():
                 try:
@@ -621,8 +713,12 @@ def load_eval_data() -> dict:
                 u = rec.get('underage_labels', {})
                 a = rec.get('adult_labels', {})
                 nu = rec.get('no_underage_labels', {})
-                if not u and not a:
-                    continue
+                # Don't skip on empty labels. siglip2 finding zero underage AND
+                # zero adult tags is a valid result for "completely clean" images
+                # — LGBM on a 0-vector returns a low baseline score, which is what
+                # we want to surface in the card (better than a dash). Skipping
+                # left ~163 borderlands cards without V6/V8/V11 scores even when
+                # piper_result.siglip2_details was fully populated.
                 s11 = _v11_lgbm_score(u, a, nu)
                 if s11 is not None:
                     result.setdefault(pid, {})["v11"] = _make_eval_entry(
@@ -638,8 +734,12 @@ def load_eval_data() -> dict:
                 u = rec.get('underage_labels', {})
                 a = rec.get('adult_labels', {})
                 nu = rec.get('no_underage_labels', {})
-                if not u and not a:
-                    continue
+                # Don't skip on empty labels. siglip2 finding zero underage AND
+                # zero adult tags is a valid result for "completely clean" images
+                # — LGBM on a 0-vector returns a low baseline score, which is what
+                # we want to surface in the card (better than a dash). Skipping
+                # left ~163 borderlands cards without V6/V8/V11 scores even when
+                # piper_result.siglip2_details was fully populated.
                 lbl = rec.get('label')
                 s11 = _v11_lgbm_score(u, a, nu)
                 if s11 is not None:
@@ -665,8 +765,12 @@ def load_eval_data() -> dict:
                     und_minor = det.get('minor', 0.0)
                 except Exception:
                     continue
-                if not u and not a:
-                    continue
+                # Don't skip on empty labels. siglip2 finding zero underage AND
+                # zero adult tags is a valid result for "completely clean" images
+                # — LGBM on a 0-vector returns a low baseline score, which is what
+                # we want to surface in the card (better than a dash). Skipping
+                # left ~163 borderlands cards without V6/V8/V11 scores even when
+                # piper_result.siglip2_details was fully populated.
                 s11 = _v11_lgbm_score(u, a, None)
                 if s11 is not None:
                     entry = _make_eval_entry(
@@ -675,7 +779,76 @@ def load_eval_data() -> dict:
                     entry['fallback_taxonomy'] = True  # mark — taxonomy mismatch
                     result.setdefault(pid, {})["v11"] = entry
 
-            # LS V11 fallback (qwen3_age_results.json — 180-tag)
+            # Borderlands V11 fallback (siglip2_details from moderate_borderlands)
+            try:
+                for row in conn_inline.execute("SELECT id, label, variant, piper_result FROM borderlands_pool"):
+                    pid = row["id"]
+                    if "v11" in result.get(pid, {}):
+                        continue
+                    try:
+                        pr  = json.loads(row["piper_result"]) if row["piper_result"] else {}
+                        det = (pr.get('siglip2_details') or {}).get('underage', {})
+                        lbl_data = det.get('labels', {})
+                        u = lbl_data.get('underage', {}); a = lbl_data.get('adult', {})
+                        und_minor = det.get('minor', 0.0)
+                    except Exception:
+                        continue
+                    # See note above — don't skip on empty labels; LGBM 0-vector
+                    # baseline is the correct score for clean images.
+                    s11 = _v11_lgbm_score(u, a, None)
+                    if s11 is not None:
+                        entry = _make_eval_entry(
+                            lgbm=s11, minor=und_minor,
+                            human_label=row["label"], variant=row["variant"], version='v11')
+                        entry['fallback_taxonomy'] = True
+                        result.setdefault(pid, {})["v11"] = entry
+            except Exception:
+                pass
+
+            # LS V11 fallback from DB ls_images.siglip2_details (180-tag)
+            # Same reasoning as V8 path above: new LS batches (imported via
+            # import_ls_batch.py) live in DB but never enter qwen3_age_results.json.
+            # Marked fallback_taxonomy because V11 was trained on 317-tag :x20 input
+            # but the d2911d10bb taxonomy is the slim 180-tag set.
+            try:
+                conn_v11_ls = _db_connect()
+                for offset in range(0, 50000, 500):
+                    rows_v11 = conn_v11_ls.execute("""
+                        SELECT task_id, age_from, variant, siglip2_details
+                        FROM ls_images WHERE siglip2_details IS NOT NULL
+                        LIMIT 500 OFFSET ?
+                    """, (offset,)).fetchall()
+                    if not rows_v11:
+                        break
+                    for row in rows_v11:
+                        gid = f"ls_{row['task_id']}"
+                        if "v11" in result.get(gid, {}):
+                            continue
+                        try:
+                            det_all = json.loads(row["siglip2_details"])
+                        except Exception:
+                            continue
+                        det = (det_all or {}).get('underage', {})
+                        lbl_data = det.get('labels', {})
+                        u = lbl_data.get('underage', {}); a = lbl_data.get('adult', {})
+                        # See note above — don't skip on empty labels; LGBM
+                        # 0-vector baseline is the correct score for clean images.
+                        s11 = _v11_lgbm_score(u, a, None)
+                        if s11 is None:
+                            continue
+                        af = row["age_from"]
+                        cat = ls_cat(af) if af is not None else None
+                        entry = _make_eval_entry(
+                            lgbm=s11, minor=det.get('minor', 0.0),
+                            human_label=cat, variant=row["variant"], version='v11')
+                        entry['fallback_taxonomy'] = True
+                        result.setdefault(gid, {})["v11"] = entry
+                conn_v11_ls.close()
+            except Exception as e:
+                print(f"  V11 LS from DB error: {e}")
+
+            # LS V11 fallback (qwen3_age_results.json — 180-tag) — covers items
+            # that DB couldn't provide (e.g. corruption recovery, edge cases).
             if ls_json_inline.exists():
                 try:
                     raw_inline = ls_json_inline.read_bytes().rstrip(b"\x00").decode("utf-8")
@@ -690,8 +863,8 @@ def load_eval_data() -> dict:
                         det = ((_ast.literal_eval(siglip_raw) if isinstance(siglip_raw, str) else siglip_raw) or {}).get("underage", {})
                         lbl_data = det.get("labels", {})
                         u = lbl_data.get("underage", {}); a = lbl_data.get("adult", {})
-                        if not u and not a:
-                            continue
+                        # See note above — don't skip on empty labels; LGBM
+                        # 0-vector baseline is the correct score for clean images.
                         af = (v.get("age") or {}).get("ageFrom")
                         cat = ls_cat(af) if af is not None else None
                         s11 = _v11_lgbm_score(u, a, None)
@@ -743,8 +916,8 @@ def load_eval_data() -> dict:
                             und_minor = det.get('minor', 0.0)
                         except Exception:
                             continue
-                    if not u and not a:
-                        continue
+                    # See note above — don't skip on empty labels; LGBM 0-vector
+                    # baseline is the correct score for clean images.
                     # V6
                     if 'v6' not in result.get(pid, {}):
                         s6 = _v6_lgbm_score({'underage': {'labels': {'underage': u, 'adult': a}, 'minor': und_minor}})
@@ -870,12 +1043,24 @@ def pipe_status(entry):
 def load_ls():
     if not DB_PATH.exists(): return []
     conn = _db_connect()
-    rows = conn.execute("""
-        SELECT task_id, media, variant, age_from, age_to,
-               siglip2_labels, siglip2_passed, siglip2_details, face_detect
-        FROM ls_images
-        WHERE age_from IS NOT NULL
-    """).fetchall()
+    # Tolerate ls_images that doesn't yet have the `session` column (older
+    # checkouts) — fall back to plain SELECT in that case.
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(ls_images)").fetchall()}
+    has_session = 'session' in cols
+    has_deleted = 'deleted' in cols
+    # Used to require WHERE age_from IS NOT NULL — this dropped new LS batches
+    # (e.g. view 65 / 2026-05-28_ls_underage) where annotations only carry the
+    # `underage` tag without a numeric age. Now we only require media; missing
+    # age just means label/ageFrom come through as None and the user labels them
+    # manually in the gallery.
+    where = "WHERE media IS NOT NULL"
+    if has_deleted:
+        where += " AND (deleted IS NULL OR deleted = 0)"
+    sel = ("SELECT task_id, media, variant, age_from, age_to, "
+           "       siglip2_labels, siglip2_passed, siglip2_details, face_detect"
+           f"{', session' if has_session else ''} "
+           f"FROM ls_images {where}")
+    rows = conn.execute(sel).fetchall()
     conn.close()
     result = []
     for row in rows:
@@ -888,11 +1073,12 @@ def load_ls():
                 "siglip2_details":    json.loads(row["siglip2_details"]) if row["siglip2_details"] else None,
                 "face_detect_result": json.loads(row["face_detect"]) if row["face_detect"] else None,
             }
+        sess = row["session"] if has_session and row["session"] else "labelstudio"
         result.append({
             "id":           f"ls_{row['task_id']}",
             "_ls_id":       row["task_id"],
             "source":       "labelstudio",
-            "session":      "labelstudio",
+            "session":      sess,
             "_serve_url":   row["media"] or "",
             "label":        ls_cat(af),
             "labeled_at":   None,
@@ -901,7 +1087,7 @@ def load_ls():
             "variant":      default_variant(ls_cat(af)) or "positive",
             "prompt":       None,
             "piper_result": pipe_res,
-            "export_batch": None,
+            "export_batch": sess if sess != "labelstudio" else None,
         })
     return result
 
@@ -983,21 +1169,97 @@ def load_k30():
     return result
 
 
+def load_borderlands():
+    """Local-files dataset: images live under data/borderlands/, scored via
+    base64 data URIs (no S3 / external URL). Mirrors load_grafana shape so the
+    front-end card renderer treats them uniformly."""
+    if not DB_PATH.exists(): return []
+    try:
+        conn = _db_connect()
+        rows = conn.execute("""
+            SELECT id, local_path, original_path, filename, label, label_source,
+                   label_confirmed, labeled_at, variant, piper_result, qwen3_result,
+                   session
+            FROM borderlands_pool
+            WHERE deleted IS NULL OR deleted = 0
+        """).fetchall()
+        conn.close()
+    except Exception as e:
+        print(f"  load_borderlands error (table may not exist yet): {e}")
+        return []
+    result = []
+    for v in rows:
+        local = v["local_path"]
+        serve = ("/img/" + Path(local).name) if local and (BASE_DIR / local).exists() else ""
+        lbl = v["label"]
+        qr  = json.loads(v["qwen3_result"]) if v["qwen3_result"] else None
+        # Show qwen3 description in the prompt slot when available — otherwise
+        # fall back to the original filename so the card still has something to
+        # identify the image.
+        prompt_txt = ((qr or {}).get("description")) or v["filename"] or ""
+        result.append({
+            "id":              v["id"],
+            "_ls_id":          None,
+            "source":          "borderlands",
+            "session":         v["session"] or "borderlands",
+            "_serve_url":      serve,
+            "thumb_url":       "",
+            "label":           lbl,
+            "label_source":    v["label_source"],
+            "label_confirmed": bool(v["label_confirmed"]),
+            "labeled_at":      v["labeled_at"],
+            "ageFrom":         None,
+            "ageTo":           None,
+            "variant":         v["variant"] or default_variant(lbl),
+            "prompt":          prompt_txt,
+            "filename":        v["filename"] or "",
+            "piper_result":    json.loads(v["piper_result"]) if v["piper_result"] else None,
+            "export_batch":    v["session"] or "borderlands",
+            "qwen3_result":    qr,
+        })
+    return result
+
+
 def combined_data():
-    ls      = load_ls()
-    grafana = load_grafana()
-    k30     = load_k30()
-    # Newest grafana first, then LS, then K30 at the end
+    ls          = load_ls()
+    grafana     = load_grafana()
+    k30         = load_k30()
+    borderlands = load_borderlands()
+    # Newest grafana first, then LS, then Borderlands, then K30 at the end
     grafana.sort(key=lambda r: r.get("export_batch") or "", reverse=True)
-    return grafana + ls + k30
+    return grafana + ls + borderlands + k30
 
 def grafana_sessions():
+    """Return distinct sessions from both grafana_pool AND ls_images, tagged
+    by source so the UI dropdown can scope itself to the selected Источник.
+
+    Shape: list of {"session": str, "source": "grafana"|"labelstudio"}, sorted
+    newest-first within each source.  `legacy_initial` IS included for LS — the
+    UI renames it to "Old" on display.
+    """
     if not DB_PATH.exists(): return []
     conn = _db_connect()
-    rows = conn.execute("SELECT DISTINCT export_batch FROM grafana_pool WHERE deleted IS NULL OR deleted = 0").fetchall()
+    out = []
+    # Grafana
+    rows = conn.execute(
+        "SELECT DISTINCT export_batch FROM grafana_pool "
+        "WHERE deleted IS NULL OR deleted = 0"
+    ).fetchall()
+    g_sess = sorted({r["export_batch"] or "unknown" for r in rows}, reverse=True)
+    for s in g_sess:
+        out.append({"session": s, "source": "grafana"})
+    # LS — include legacy_initial too (UI shows it as "Old")
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(ls_images)").fetchall()}
+    if 'session' in cols:
+        ls_rows = conn.execute(
+            "SELECT DISTINCT session FROM ls_images "
+            "WHERE session IS NOT NULL AND session != ''"
+        ).fetchall()
+        l_sess = sorted({r["session"] for r in ls_rows}, reverse=True)
+        for s in l_sess:
+            out.append({"session": s, "source": "labelstudio"})
     conn.close()
-    seen = sorted({r["export_batch"] or "unknown" for r in rows}, reverse=True)
-    return seen
+    return out
 
 # ── JSON sync helpers (keep JSON files in sync for external scripts) ───────────
 
@@ -1103,6 +1365,160 @@ def save_ls(updates: dict, to_delete: list):
     _sync_ls_json()
     return saved, deleted
 
+# ── Category marks (NSFW categories: bestiality / human_waste / blood etc.) ──
+# Per-item positive/negative classification across 5 hardcoded categories.
+# Used to be localStorage-only with an export-to-JSON button. Now stored in
+# gallery.db so it survives browser-cache clears and is captured by anchor
+# snapshots. The export button was removed — data flows entirely via server.
+def _ensure_category_marks_table():
+    if not DB_PATH.exists(): return
+    conn = _db_connect()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS category_marks (
+            id         TEXT NOT NULL,
+            category   TEXT NOT NULL,
+            polarity   TEXT NOT NULL,
+            marked_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id, category)
+        )
+    """)
+    conn.commit()
+    conn.close()
+    _db_flush()
+
+
+def load_category_marks() -> dict:
+    """Return {category: {"positive": [...ids], "negative": [...ids]}}."""
+    out = {}
+    if not DB_PATH.exists(): return out
+    try:
+        conn = _db_connect()
+        rows = conn.execute(
+            "SELECT id, category, polarity FROM category_marks"
+        ).fetchall()
+        conn.close()
+    except sqlite3.OperationalError:
+        _ensure_category_marks_table()
+        return out
+    for r in rows:
+        cat = r["category"]
+        if cat not in out:
+            out[cat] = {"positive": [], "negative": []}
+        if r["polarity"] in ("positive", "negative"):
+            out[cat][r["polarity"]].append(r["id"])
+    return out
+
+
+def save_category_marks_full(marks: dict) -> int:
+    """Atomically replace the entire category_marks set with `marks`."""
+    if not DB_PATH.exists(): return 0
+    _ensure_category_marks_table()
+    conn = _db_connect()
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.cursor()
+    existing = {(r["id"], r["category"]): r["polarity"]
+                for r in cur.execute("SELECT id, category, polarity FROM category_marks").fetchall()}
+    incoming = {}
+    for cat, pn in (marks or {}).items():
+        if not isinstance(pn, dict): continue
+        for pol in ("positive", "negative"):
+            for mid in (pn.get(pol) or []):
+                incoming[(mid, cat)] = pol
+    added_or_changed = []
+    for key, pol in incoming.items():
+        if existing.get(key) != pol:
+            added_or_changed.append((key, pol))
+    removed = [k for k in existing if k not in incoming]
+    for (mid, cat), pol in added_or_changed:
+        cur.execute(
+            "INSERT INTO category_marks(id, category, polarity, marked_at) VALUES(?,?,?,?) "
+            "ON CONFLICT(id, category) DO UPDATE SET polarity=excluded.polarity, marked_at=excluded.marked_at",
+            (mid, cat, pol, now)
+        )
+        _audit_write(f"cat_mark_{pol}", "category_marks", mid, {"category": cat})
+    for (mid, cat) in removed:
+        cur.execute("DELETE FROM category_marks WHERE id=? AND category=?", (mid, cat))
+        _audit_write("cat_mark_remove", "category_marks", mid, {"category": cat})
+    conn.commit()
+    conn.close()
+    _db_flush()
+    return len(incoming)
+
+
+# ── Marks (★) — server-side persistent storage in gallery.db ─────────────────
+# Used to be localStorage-only, which was fragile (one accidental clear and
+# everything is gone, no recovery from anchor snapshots). Now stored in a
+# dedicated `marks` table. Each toggle hits POST /api/marks. localStorage is
+# kept as a cross-tab safety net but the DB is the source of truth.
+def _ensure_marks_table():
+    if not DB_PATH.exists(): return
+    conn = _db_connect()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS marks (
+            id        TEXT PRIMARY KEY,
+            marked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+    _db_flush()
+
+
+def load_marks() -> list:
+    if not DB_PATH.exists(): return []
+    try:
+        conn = _db_connect()
+        rows = conn.execute("SELECT id FROM marks").fetchall()
+        conn.close()
+        return [r["id"] for r in rows]
+    except sqlite3.OperationalError:
+        _ensure_marks_table()
+        return []
+
+
+def save_marks_full(ids: list) -> int:
+    """Replace the entire marks set with `ids`. Returns the new count."""
+    if not DB_PATH.exists(): return 0
+    _ensure_marks_table()
+    conn = _db_connect()
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.cursor()
+    # Diff against existing for audit + minimal work
+    existing = {r["id"] for r in cur.execute("SELECT id FROM marks").fetchall()}
+    incoming = set(ids or [])
+    added   = incoming - existing
+    removed = existing - incoming
+    for mid in added:
+        cur.execute("INSERT OR REPLACE INTO marks(id, marked_at) VALUES(?, ?)", (mid, now))
+        _audit_write("mark_add", "marks", mid, None)
+    for mid in removed:
+        cur.execute("DELETE FROM marks WHERE id=?", (mid,))
+        _audit_write("mark_remove", "marks", mid, None)
+    conn.commit()
+    conn.close()
+    _db_flush()
+    return len(incoming)
+
+
+# ── Audit log: every label-changing write goes here, append-only ──────────────
+# File: backups/audit/audit_YYYY-MM.jsonl. Each line = one JSON object describing
+# a single edit. Wrapped in try/except so a logging failure NEVER breaks a save.
+# To trace future losses: scan this file for the IDs that lost their state.
+def _audit_write(op: str, table: str, item_id: str, payload: dict = None):
+    try:
+        from datetime import datetime as _dt
+        audit_dir = BASE_DIR / "backups" / "audit"
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        path = audit_dir / f"audit_{_dt.now().strftime('%Y-%m')}.jsonl"
+        rec = {"ts": _dt.now().isoformat(), "op": op, "table": table, "id": item_id}
+        if payload:
+            rec["payload"] = payload
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass  # NEVER let logging break the save flow
+
+
 def save_k30(updates: dict, to_delete: list, to_confirm: list = None):
     """Save user labels for K30 items (mirror of save_grafana on k30_pool)."""
     if not DB_PATH.exists(): return 0, 0
@@ -1118,6 +1534,7 @@ def save_k30(updates: dict, to_delete: list, to_confirm: list = None):
         var = default_variant(lbl)
         conn.execute("""UPDATE k30_pool SET label=?, labeled_at=?, label_source='human',
                         label_confirmed=1, variant=? WHERE id=?""", (lbl, now, var, item_id))
+        _audit_write("label_set", "k30_pool", item_id, {"label": lbl, "variant": var, "label_confirmed": 1})
         saved += 1
     for item_id in (to_confirm or []):
         row = conn.execute("SELECT label FROM k30_pool WHERE id=?", (item_id,)).fetchone()
@@ -1126,10 +1543,12 @@ def save_k30(updates: dict, to_delete: list, to_confirm: list = None):
             conn.execute("""UPDATE k30_pool SET label_confirmed=1, label_source='human',
                             labeled_at=COALESCE(labeled_at, ?), variant=? WHERE id=?""",
                          (now, var, item_id))
+            _audit_write("confirm", "k30_pool", item_id, {"label": lbl, "label_confirmed": 1})
             saved += 1
     deleted = 0
     for item_id in (to_delete or []):
         conn.execute("UPDATE k30_pool SET deleted=1, deleted_at=? WHERE id=?", (now, item_id))
+        _audit_write("delete", "k30_pool", item_id, {"deleted": 1})
         deleted += 1
     conn.commit(); conn.close(); _db_flush()
     return saved, deleted
@@ -1152,6 +1571,7 @@ def save_grafana(updates: dict, to_delete: list, to_confirm: list = None):
             UPDATE grafana_pool SET label=?, labeled_at=?, label_source='human',
             label_confirmed=1, variant=? WHERE id=?
         """, (lbl, now, var, item_id))
+        _audit_write("label_set", "grafana_pool", item_id, {"label": lbl, "variant": var, "label_confirmed": 1})
         saved += 1
     for item_id in (to_confirm or []):
         row = conn.execute("SELECT label, labeled_at FROM grafana_pool WHERE id=?", (item_id,)).fetchone()
@@ -1162,6 +1582,7 @@ def save_grafana(updates: dict, to_delete: list, to_confirm: list = None):
                 UPDATE grafana_pool SET label_confirmed=1, label_source='human',
                 labeled_at=COALESCE(labeled_at, ?), variant=? WHERE id=?
             """, (now, var, item_id))
+            _audit_write("confirm", "grafana_pool", item_id, {"label": lbl, "label_confirmed": 1})
             saved += 1
     deleted = 0
     for item_id in to_delete:
@@ -1169,6 +1590,7 @@ def save_grafana(updates: dict, to_delete: list, to_confirm: list = None):
             "UPDATE grafana_pool SET deleted=1, deleted_at=? WHERE id=?",
             (now, item_id)
         )
+        _audit_write("delete", "grafana_pool", item_id, {"deleted": 1})
         deleted += 1
     conn.commit()
     conn.close()
@@ -1241,6 +1663,85 @@ select, input[type=text] {
 .card.src-ls    { border-left: 3px solid #2a5a8a; }
 .card.src-grafana { border-left: 3px solid #5a2a8a; }
 
+/* Vivid frame around the image based on current label — child=red, teen=orange,
+   adult=green.
+   Implemented via ::after pseudo-element with z-index, NOT inset box-shadow,
+   because <img object-fit:contain> paints on top of inset shadows when the
+   image aspect ratio matches the wrapper (e.g. square portraits cover the
+   whole .img-wrap). pointer-events:none keeps badges/clicks underneath usable. */
+.card.lbl-child .img-wrap::after,
+.card.lbl-teen  .img-wrap::after,
+.card.lbl-adult .img-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 3px solid transparent;
+  pointer-events: none;
+  z-index: 4;
+}
+.card.lbl-child .img-wrap::after { border-color: #ff4848; }
+.card.lbl-teen  .img-wrap::after { border-color: #ff9020; }
+.card.lbl-adult .img-wrap::after { border-color: #40d060; }
+
+/* Same coloured frame in the lightbox — pseudo-element on #lb-wrap so the
+   <img> can't paint over it. */
+#lb-wrap { position: relative; }
+#lb-wrap.lbl-child::after,
+#lb-wrap.lbl-teen::after,
+#lb-wrap.lbl-adult::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 4px solid transparent;
+  pointer-events: none;
+  z-index: 4;
+}
+#lb-wrap.lbl-child::after { border-color: #ff4848; }
+#lb-wrap.lbl-teen::after  { border-color: #ff9020; }
+#lb-wrap.lbl-adult::after { border-color: #40d060; }
+
+/* Exclude-sessions checklist — appears only when source=Все */
+#excl-btn {
+  background:#1a1a2a; border:1px solid #444466; color:#a0a0c0;
+  padding:4px 10px; border-radius:3px; cursor:pointer; font-size:11px;
+  font-family:monospace;
+}
+#excl-btn:hover { background:#22223a; border-color:#666688; color:#c0c0e0; }
+#excl-btn.active { background:#2a1f1a; border-color:#aa6644; color:#ffb088; }
+#excl-count { font-size:10px; color:inherit; opacity:0.9; }
+#excl-panel {
+  display:none; position:absolute; top:100%; left:0; margin-top:4px;
+  min-width:240px; max-height:340px; overflow:auto;
+  background:#16162a; border:1px solid #3a3a5a; border-radius:4px;
+  padding:6px 8px; z-index:20; font-size:11px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.5);
+}
+#excl-panel.open { display:block; }
+#excl-panel-hdr {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:2px 0 6px; border-bottom:1px solid #2a2a4a; margin-bottom:6px;
+  color:#888; font-size:10px; text-transform:uppercase;
+}
+#excl-clear {
+  background:none; border:1px solid #444; color:#888;
+  font-size:10px; padding:1px 6px; border-radius:2px; cursor:pointer;
+}
+#excl-clear:hover { background:#2a2a4a; color:#ccc; }
+#excl-panel-list .excl-item {
+  display:flex; align-items:center; gap:6px;
+  padding:3px 2px; cursor:pointer;
+  color:#b0b0c0;
+}
+#excl-panel-list .excl-item:hover { background:#1f1f3a; color:#d0d0e0; }
+#excl-panel-list .excl-item input { margin:0; cursor:pointer; }
+#excl-panel-list .excl-grp {
+  font-size:9px; text-transform:uppercase; color:#666;
+  padding:4px 2px 2px; margin-top:4px;
+  border-top:1px solid #2a2a4a;
+}
+#excl-panel-list .excl-grp:first-child { border-top:none; margin-top:0; }
+#excl-panel-list .excl-cnt { color:#666; margin-left:auto; font-size:10px; }
+
 /* image */
 .img-wrap {
   width: 100%; aspect-ratio: 1; overflow: hidden; background: #111;
@@ -1285,6 +1786,50 @@ select, input[type=text] {
 }
 #export-btn:hover { background:#3a2e1a; border-color:#aa8030; }
 #export-btn:disabled { opacity:.4; cursor:default; }
+#bulk-toggle-btn, #lgbm-toggle-btn {
+  background:#16162a; border:1px solid #3a3a5a; color:#a0a0dd;
+  padding:4px 10px; border-radius:3px; cursor:pointer; font-size:11px;
+  font-family:monospace;
+}
+#bulk-toggle-btn:hover, #lgbm-toggle-btn:hover { background:#1a1a3a; border-color:#5a5aaa; color:#c0c0ff; }
+#bulk-toggle-btn.active, #lgbm-toggle-btn.active { background:#1e1e4a; border-color:#6a6aaa; color:#d0d0ff; }
+#bulk-bar {
+  display: none; align-items:center; gap:14px;
+  padding: 8px 14px; background:#0e0e1a; border-bottom:1px solid #222244;
+  font-size:11px;
+}
+#bulk-bar.open { display: flex; }
+#bulk-bar .bulk-bar-title {
+  font-size:10px; color:#5a5aaa; font-weight:bold;
+  text-transform:uppercase; letter-spacing:.5px;
+}
+#bulk-bar .bulk-hint { color:#666; font-weight:normal; text-transform:none; letter-spacing:0; }
+#bulk-bar .bulk-bar-row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+#bulk-bar .bulk-info { color:#a0a0c0; font-family:monospace; }
+#bulk-bar .bulk-info b { color:#d0d0ff; }
+#bulk-bar .bulk-sep { width:1px; height:18px; background:#333355; }
+#mark-page-btn, #mark-clear-btn {
+  background:#16162a; border:1px solid #444466; color:#b0b0dd;
+  padding:4px 10px; border-radius:3px; cursor:pointer; font-size:11px;
+  font-family:monospace;
+}
+#mark-page-btn:hover { background:#22224a; border-color:#6a6aaa; color:#d0d0ff; }
+#mark-clear-btn { border-color:#6a4a4a; color:#cc9090; }
+#mark-clear-btn:hover { background:#2a1414; border-color:#aa6a6a; color:#ffc0c0; }
+#mark-clear-btn:disabled { opacity:.4; cursor:default; }
+.bulk-btn {
+  background:#16162a; border:1px solid #444466; color:#b0b0dd;
+  padding:4px 8px; border-radius:3px; cursor:pointer; font-size:11px;
+  font-family:monospace;
+}
+.bulk-btn:hover { background:#22224a; border-color:#6a6aaa; color:#d0d0ff; }
+.bulk-btn:disabled { opacity:.4; cursor:default; }
+.bulk-btn.bulk-confirm { border-color:#3a6a4a; color:#80cc90; }
+.bulk-btn.bulk-confirm:hover:not(:disabled) { background:#0e2a1a; border-color:#5aaa6a; color:#a0ffb0; }
+.bulk-btn.bulk-delete  { border-color:#6a3a3a; color:#cc8080; }
+.bulk-btn.bulk-delete:hover:not(:disabled)  { background:#2a1414; border-color:#aa5a5a; color:#ffa0a0; }
+.bulk-btn.bulk-relabel { border-color:#3a4a6a; color:#90a0cc; }
+.bulk-btn.bulk-relabel:hover:not(:disabled) { background:#14182a; border-color:#5a6aaa; color:#b0c0ff; }
 
 /* Marked stats span in header */
 .s-mk { color: #ffd040; }
@@ -1383,6 +1928,7 @@ select, input[type=text] {
 .src-badge.ls    { background: rgba(30,70,120,.85); color: #7ab0dd; }
 .src-badge.gr    { background: rgba(60,20,100,.85); color: #c792ea; }
 .src-badge.k30   { background: rgba(20,40,100,.85); color: #88aaff; }
+.src-badge.bl    { background: rgba(80,40,10,.85); color: #ffb088; }
 .disagree-badge {
   position: absolute; top: 4px; right: 4px;
   background: rgba(180,80,20,.92); color: #ffd0a0;
@@ -1695,21 +2241,57 @@ select, input[type=text] {
   gap: 8px;
   height: 22px;
 }
-.lgbm-thr-buttons {
-  display: flex; flex-direction: column; gap: 4px; align-self: center;
+/* Slider wrapper for shift-trail overlay.
+   Trail = a horizontal coloured strip drawn ON TOP of the slider track from
+   the saved baseline up to the current value. Translucent so the track's
+   own gradient is visible through it. Colour encodes direction:
+     • current > baseline → blue  (threshold moved UP, model becomes stricter)
+     • current < baseline → orange (threshold moved DOWN, model becomes looser)
+   After "Сохранить" the baseline jumps to current → trail width = 0. */
+.thr-slider-wrap {
+  position: relative; width: 130px; height: 22px;
+  display: flex; align-items: center;
 }
-#lgbm-save-thr-btn, #lgbm-reset-thr-btn {
+.thr-slider-wrap .lgbm-thr-slider {
+  /* keep base size/gradient from .lgbm-thr-slider; just ensure it's the bottom layer */
+  position: relative; z-index: 1;
+}
+.thr-slider-wrap .thr-trail {
+  position: absolute; top: 50%; height: 6px;
+  transform: translateY(-50%);
+  border-radius: 3px; pointer-events: none;
+  z-index: 2; width: 0;
+  transition: left 80ms linear, width 80ms linear, background 120ms linear;
+  box-shadow: 0 0 6px rgba(0,0,0,.4);
+}
+.thr-slider-wrap .thr-trail.up   { background: rgba(80, 150, 255, 0.85); }
+.thr-slider-wrap .thr-trail.down { background: rgba(255, 150, 80, 0.85); }
+/* Baseline tick — small vertical mark at the saved value */
+.thr-slider-wrap .thr-baseline {
+  position: absolute; top: 50%; height: 14px; width: 2px;
+  transform: translate(-50%, -50%); pointer-events: none;
+  background: #d0d0ff; z-index: 3; border-radius: 1px;
+  box-shadow: 0 0 3px rgba(200,200,255,.6);
+  transition: left 80ms linear;
+}
+.lgbm-thr-buttons {
+  display: grid; grid-template-columns: auto auto auto;
+  gap: 4px; align-self: center;
+}
+#lgbm-save-thr-btn, #lgbm-reset-thr-btn, #lgbm-auto-thr-btn {
   background: #0e0e2a; border: 1px solid #3a3a8a; color: #8080cc;
-  padding: 4px 12px; border-radius: 4px; cursor: pointer;
+  padding: 4px 10px; border-radius: 4px; cursor: pointer;
   font-size: 11px; font-family: monospace; white-space: nowrap;
 }
 #lgbm-reset-thr-btn { border-color: #6a4a3a; color: #cc9080; }
 #lgbm-reset-thr-btn:hover { background: #2a1a0e; border-color: #aa6a5a; color: #ffb090; }
+#lgbm-auto-thr-btn { border-color: #3a6a4a; color: #80cc90; }
+#lgbm-auto-thr-btn:hover { background: #0e2a1a; border-color: #5aaa6a; color: #a0ffb0; }
 .lgbm-holdout-toggle {
   display: flex; align-items: center; gap: 4px;
   font-size: 10px; color: #a0c0ee; cursor: pointer;
   padding: 4px 6px; border: 1px solid #2a3a5a; border-radius: 4px;
-  background: #0e1424;
+  background: #0e1424; white-space: nowrap;
 }
 .lgbm-holdout-toggle input { margin: 0; cursor: pointer; }
 .lgbm-holdout-toggle.active { background: #1a2a4a; border-color: #4a6aaa; color: #b0d0ff; }
@@ -1798,6 +2380,7 @@ select, input[type=text] {
 #lgbm-stats .lst-bad      { background: #ff6060; }   /* red */
 #lgbm-stats .lst-best     { color: #80ff80; }
 #lgbm-stats .lst-worst    { color: #ff8080; }
+#lgbm-stats .lst-fp-tag   { color: #ff8080; font-size: 9px; font-weight: bold; margin-left: 4px; vertical-align: middle; }
 .lgbm-badge {
   position: absolute; bottom: 24px; left: 4px; font-size: 9px; padding: 1px 4px;
   border-radius: 2px; pointer-events: none; z-index: 3;
@@ -1835,6 +2418,7 @@ select, input[type=text] {
       <option value="all">Все</option>
       <option value="labelstudio">Label Studio</option>
       <option value="grafana">Grafana (все)</option>
+      <option value="borderlands">Borderlands</option>
       <option value="k30">K30 (Tom)</option>
       <option value="marked">⭐ Отмеченные</option>
     </select>
@@ -1844,11 +2428,26 @@ select, input[type=text] {
     <select id="f-session" style="max-width:170px"><option value="all">все сессии</option></select>
   </label>
 
+  <!-- Exclude-sessions checklist (visible only when Источник = Все) -->
+  <div id="excl-wrap" style="display:none;position:relative;align-items:center">
+    <button type="button" id="excl-btn" title="Исключить отдельные сессии из режима «Все»">
+      Исключить <span id="excl-count">(0)</span>
+    </button>
+    <div id="excl-panel">
+      <div id="excl-panel-hdr">
+        <span>Исключить из выборки</span>
+        <button type="button" id="excl-clear">Сбросить</button>
+      </div>
+      <div id="excl-panel-list"><!-- populated by buildExcludePanel() --></div>
+    </div>
+  </div>
+
   <label style="display:flex;align-items:center;gap:4px">Разметка
     <select id="f-label">
       <option value="all">Все</option>
       <option value="unlabeled">Без разметки</option>
       <option value="unconfirmed">⚡ Не подтверждено</option>
+      <option value="underage">⛔ underage (child + teen)</option>
       <option value="child">child</option>
       <option value="teen">teen</option>
       <option value="adult">adult</option>
@@ -1908,10 +2507,26 @@ select, input[type=text] {
   <span id="status"></span>
   <button id="confirm-btn" onclick="confirmPage()" title="Подтвердить все AI-метки на текущей странице без изменений">✓ Подтвердить страницу</button>
   <button id="save-btn" onclick="saveChanges()">💾 Сохранить</button>
+  <button id="bulk-toggle-btn" onclick="toggleBulkBar()" title="Тулбар массовых операций над отмеченными ★">★ Bulk</button>
   <button id="export-btn" onclick="exportMarked()" disabled title="Экспортировать отмеченные изображения в JSON">📥 Экспорт ⭐ (<span id="export-cnt">0</span>)</button>
-  <button id="export-cat-btn" onclick="exportCategories()" disabled title="Экспортировать категоризованные изображения по категориям">📥 Категории (<span id="export-cat-cnt">0</span>)</button>
   <button id="lgbm-toggle-btn" onclick="toggleLgbmBar()" title="LGBM пороги и статистика">⚙ LGBM</button>
 </header>
+
+<div id="bulk-bar">
+  <div class="bulk-bar-title">★ Массовые операции <span class="bulk-hint">— применяются к ★, попавшим под текущий фильтр</span></div>
+  <div class="bulk-bar-row">
+    <button id="mark-page-btn" onclick="markPage()" title="Отметить ★ все карточки на текущей странице">★ Страницу</button>
+    <button id="mark-clear-btn" onclick="unmarkAll()" title="Снять все ★ отметки">↺ Снять ★<span id="mark-clear-cnt"></span></button>
+    <span class="bulk-sep"></span>
+    <span class="bulk-info">В выборке: <b id="bulk-scope-cnt">0</b> из ★ <b id="bulk-total-cnt">0</b></span>
+    <span class="bulk-sep"></span>
+    <button class="bulk-btn bulk-confirm" onclick="bulkConfirmMarked()" title="Подтвердить (label_confirmed=true) все ★, попадающие под текущий фильтр">✓ Подтв<span id="bulk-confirm-cnt"></span></button>
+    <button class="bulk-btn bulk-delete"  onclick="bulkDeleteMarked()"  title="Удалить (deleted=1) все ★, попадающие под текущий фильтр — потребуется Сохранить">🗑 Удал<span id="bulk-delete-cnt"></span></button>
+    <button class="bulk-btn bulk-relabel" onclick="bulkRelabelMarked('child')"  title="Установить child + подтвердить">→ child</button>
+    <button class="bulk-btn bulk-relabel" onclick="bulkRelabelMarked('teen')"   title="Установить teen + подтвердить">→ teen</button>
+    <button class="bulk-btn bulk-relabel" onclick="bulkRelabelMarked('adult')"  title="Установить adult + подтвердить">→ adult</button>
+  </div>
+</div>
 
 <div id="lgbm-bar">
   <div id="lgbm-stats" title="V11 на items с native 317-tag taxonomy (fallback-скоры исключены, их видно на карточках со звёздочкой)"></div>
@@ -1920,31 +2535,32 @@ select, input[type=text] {
       <div class="lgbm-bar-title lgbm-thr-title">Пороги</div>
       <div class="lgbm-thr-row" data-ver="v6">
         <span class="lgbm-thr-label">V6 ≥</span>
-        <input type="range" id="thr-v6" class="lgbm-thr-slider" value="0.30" min="0.01" max="1" step="0.01">
+        <div class="thr-slider-wrap"><div class="thr-baseline" id="thr-v6-base"></div><div class="thr-trail" id="thr-v6-trail"></div><input type="range" id="thr-v6" class="lgbm-thr-slider" value="0.30" min="0.01" max="1" step="0.01"></div>
         <span class="lgbm-thr-val" id="thr-v6-val">0.30</span>
         <span class="lgbm-thr-auc" id="auc-v6" title="ROC AUC (static) | Op = balanced acc at THR | Δ vs saved baseline">AUC: — | Op: —</span>
       </div>
       <div class="lgbm-thr-row" data-ver="v8">
         <span class="lgbm-thr-label">V8 ≥</span>
-        <input type="range" id="thr-v8" class="lgbm-thr-slider" value="0.30" min="0.01" max="1" step="0.01">
+        <div class="thr-slider-wrap"><div class="thr-baseline" id="thr-v8-base"></div><div class="thr-trail" id="thr-v8-trail"></div><input type="range" id="thr-v8" class="lgbm-thr-slider" value="0.30" min="0.01" max="1" step="0.01"></div>
         <span class="lgbm-thr-val" id="thr-v8-val">0.30</span>
         <span class="lgbm-thr-auc" id="auc-v8" title="ROC AUC (static) | Op = balanced acc at THR | Δ vs saved baseline">AUC: — | Op: —</span>
       </div>
       <div class="lgbm-thr-row" data-ver="v11">
         <span class="lgbm-thr-label">V11 ≥</span>
-        <input type="range" id="thr-v11" class="lgbm-thr-slider" value="0.30" min="0.01" max="1" step="0.01">
+        <div class="thr-slider-wrap"><div class="thr-baseline" id="thr-v11-base"></div><div class="thr-trail" id="thr-v11-trail"></div><input type="range" id="thr-v11" class="lgbm-thr-slider" value="0.30" min="0.01" max="1" step="0.01"></div>
         <span class="lgbm-thr-val" id="thr-v11-val">0.30</span>
         <span class="lgbm-thr-auc" id="auc-v11" title="ROC AUC (static) | Op = balanced acc at THR | Δ vs saved baseline">AUC: — | Op: —</span>
       </div>
       <div class="lgbm-thr-row" data-ver="k30tom">
         <span class="lgbm-thr-label" style="color:#ff9050">Tom ≥</span>
-        <input type="range" id="thr-k30tom" class="lgbm-thr-slider" value="0.10" min="0.01" max="1" step="0.01">
+        <div class="thr-slider-wrap"><div class="thr-baseline" id="thr-k30tom-base"></div><div class="thr-trail" id="thr-k30tom-trail"></div><input type="range" id="thr-k30tom" class="lgbm-thr-slider" value="0.10" min="0.01" max="1" step="0.01"></div>
         <span class="lgbm-thr-val" id="thr-k30tom-val">0.10</span>
         <span class="lgbm-thr-auc" id="auc-k30tom" title="ROC AUC of Tom\'s K=30 model | Op = balanced acc at THR | Δ vs saved baseline">AUC: — | Op: —</span>
       </div>
     </div>
     <div class="lgbm-thr-buttons">
       <button id="lgbm-save-thr-btn" onclick="saveLgbmThresholds()" title="Сохранить текущие пороги как baseline">💾 Сохранить</button>
+      <button id="lgbm-auto-thr-btn" onclick="autoTuneLgbmThresholds()" title="Подобрать оптимальный порог для каждой модели на текущей выборке (макс. balanced accuracy = (TPR+TNR)/2). Не сохраняет — нажми «Сохранить» если ок.">🎯 Автовыбор</button>
       <button id="lgbm-reset-thr-btn" onclick="resetLgbmThresholds()" title="Сбросить ползунки к сохранённым значениям">↺ Сбросить</button>
       <label class="lgbm-holdout-toggle" title="Показывать статистику только на 20% holdout-сете (V11 не видел эти items при обучении)">
         <input type="checkbox" id="lgbm-holdout-chk" onchange="onHoldoutToggle()">
@@ -1986,6 +2602,19 @@ select, input[type=text] {
 
 <script>
 let allData = [], sessions = [], changes = {}, hidden = new Set(), toConfirm = new Set(), viewedIds = new Set(), filteredData = [], currentPage = 1;
+// Sessions explicitly excluded from the "Все"-source view. Stored as keys like
+// "grafana:2026-05-28" or "labelstudio:old" so Grafana and LS namespaces don't
+// collide. Persisted to localStorage so the exclusion survives reloads.
+// Sanity guard: drop any non-string entries or keys without a valid prefix —
+// stale localStorage data from earlier dev iterations could otherwise leak a
+// bare '' key and wipe out k30 items (whose _exclKeyFor returns '').
+let excludedSessions = new Set(
+  (JSON.parse(localStorage.getItem('excludedSessions') || '[]') || [])
+    .filter(k => typeof k === 'string'
+              && (k.startsWith('grafana:')
+                  || k.startsWith('labelstudio:')
+                  || k.startsWith('borderlands:')))
+);
 let currentDomain = 'underage';   // gallery domain: underage | bestiality | human_waste | death_murder | blood | rape
 
 // Marked-for-followup items — persisted across reloads via localStorage.
@@ -2095,11 +2724,9 @@ function totalCategoryCount() {
 }
 
 function updateExportCatBtn() {
-  const btn = document.getElementById('export-cat-btn');
-  const cnt = document.getElementById('export-cat-cnt');
-  if (!btn || !cnt) return;
-  cnt.textContent = totalCategoryCount();
-  btn.disabled = totalCategoryCount() === 0;
+  // No-op stub kept for backward compat with old call sites.
+  // The "Категории (N)" export button was removed; category marks now persist
+  // to the DB on Сохранить instead of being exported as JSON.
 }
 
 function _categoryStatusFor(id) {
@@ -2191,43 +2818,29 @@ function _renderLbCatStatus() {
   }
 }
 
-function exportCategories() {
-  if (!totalCategoryCount()) return;
-  const items_by_cat = {};
-  for (const c of LB_CATEGORIES) {
-    const pos = [...categoryMarks[c.key].positive].map(id => {
-      const r = allData.find(x => x.id === id);
-      return r ? _exportPayloadFor(r) : { id };
-    });
-    const neg = [...categoryMarks[c.key].negative].map(id => {
-      const r = allData.find(x => x.id === id);
-      return r ? _exportPayloadFor(r) : { id };
-    });
-    if (pos.length || neg.length) {
-      items_by_cat[c.key] = { label: c.label, positive: pos, negative: neg };
-    }
-  }
-  const payload = {
-    exported_at: new Date().toISOString(),
-    total: totalCategoryCount(),
-    by_category: items_by_cat,
-  };
-  const json = JSON.stringify(payload, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
-  a.href = url; a.download = `categories_${stamp}.json`;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+// exportCategories() removed — category marks now persist to gallery.db via
+// the standard Сохранить flow, replacing the old JSON-export model.
+
+function _markedRealCount() {
+  // Counts only marks that point to an item still in allData (the "exportable"
+  // set). Orphans — marks for deleted/missing items — are excluded.
+  if (!marked.size || !allData.length) return marked.size;
+  const ids = new Set(allData.map(r => r.id));
+  let n = 0;
+  for (const m of marked) if (ids.has(m)) n++;
+  return n;
 }
 
 function updateExportBtn() {
   const btn = document.getElementById('export-btn');
   const cnt = document.getElementById('export-cnt');
   if (!btn || !cnt) return;
-  cnt.textContent = marked.size;
-  btn.disabled = marked.size === 0;
+  const n = _markedRealCount();
+  cnt.textContent = n;
+  btn.disabled = n === 0;
+  btn.title = (marked.size > n)
+    ? `Экспорт ${n} существующих ★ (всего в memorized-наборе ${marked.size}, остальные — orphan-метки на удалённые/отсутствующие итемы)`
+    : 'Экспортировать отмеченные изображения в JSON';
 }
 
 function _exportPayloadFor(r) {
@@ -2293,13 +2906,346 @@ function exportMarked() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// Marks live in two places:
+//   • marked (JS Set) — current in-browser state, mutated on every toggle
+//   • localStorage["marked"] — cross-tab safety net, written on every toggle
+//   • DB marks table — durable, written ONLY when user clicks Сохранить
+//
+// marksBaseline = snapshot of marks at last load/save. Used to compute dirty
+// state and decide whether Сохранить needs to push marks too.
+let marksBaseline = new Set();
+
 function persistMarked() {
   try { localStorage.setItem('marked', JSON.stringify([...marked])); } catch {}
+  // No server call here — marks go to DB only on saveChanges().
+}
+
+function marksDirty() {
+  if (marked.size !== marksBaseline.size) return true;
+  for (const id of marked) if (!marksBaseline.has(id)) return true;
+  return false;
+}
+
+async function loadMarksFromServer() {
+  // On page load: union localStorage marks (from a previous session) with
+  // server marks (from gallery.db), then auto-drop orphans (marks for items
+  // that no longer exist in allData). Baseline is set AFTER orphan cleanup
+  // so the Save button doesn't light up from passive load.
+  try {
+    const r = await fetch('/api/marks');
+    if (!r.ok) return;
+    const data = await r.json();
+    const serverIds = new Set(data.ids || []);
+    for (const id of serverIds) marked.add(id);
+    // Drop orphans: anything in `marked` that isn't in allData
+    const realIds = new Set(allData.map(x => x.id));
+    const before = marked.size;
+    for (const m of [...marked]) {
+      if (!realIds.has(m)) marked.delete(m);
+    }
+    const dropped = before - marked.size;
+    if (dropped > 0) console.info(`[marks] dropped ${dropped} orphan mark(s) at load`);
+    // Baseline = real marks on server (intersection with allData). If server
+    // had orphans too, they'll be cleaned on the next Сохранить via
+    // pushMarksToServer which filters by allData.
+    marksBaseline = new Set([...marked]);
+    try { localStorage.setItem('marked', JSON.stringify([...marked])); } catch {}
+  } catch (e) { console.warn('[marks] server load failed:', e); }
+}
+
+// Category marks (Bestiality/Human Waste/etc.) — same pattern as ★ marks:
+//   • categoryMarks JS state, mutated by +pos/-neg in lightbox
+//   • localStorage as cross-tab safety net
+//   • DB write only on Сохранить
+let categoryMarksBaseline = {};
+function _cmSnapshotKey() {
+  // Stable JSON of current categoryMarks for dirty comparison
+  const out = {};
+  for (const c of LB_CATEGORIES) {
+    out[c.key] = {
+      positive: [...categoryMarks[c.key].positive].sort(),
+      negative: [...categoryMarks[c.key].negative].sort(),
+    };
+  }
+  return JSON.stringify(out);
+}
+function categoryMarksDirty() {
+  return _cmSnapshotKey() !== JSON.stringify(categoryMarksBaseline);
+}
+async function loadCategoryMarksFromServer() {
+  try {
+    const r = await fetch('/api/category_marks');
+    if (!r.ok) return;
+    const data = await r.json();
+    const cm = data.category_marks || {};
+    for (const c of LB_CATEGORIES) {
+      const pos = (cm[c.key] || {}).positive || [];
+      const neg = (cm[c.key] || {}).negative || [];
+      // Union local + server (local wins on conflict — user may have made
+      // changes locally; pushing them back happens on Сохранить).
+      for (const id of pos) categoryMarks[c.key].positive.add(id);
+      for (const id of neg) categoryMarks[c.key].negative.add(id);
+    }
+    // Baseline = server state (sorted snapshot)
+    const base = {};
+    for (const c of LB_CATEGORIES) {
+      base[c.key] = {
+        positive: [...((cm[c.key] || {}).positive || [])].sort(),
+        negative: [...((cm[c.key] || {}).negative || [])].sort(),
+      };
+    }
+    categoryMarksBaseline = base;
+    try { localStorage.setItem('categoryMarks', JSON.stringify(
+      Object.fromEntries(LB_CATEGORIES.map(c => [c.key, {
+        positive: [...categoryMarks[c.key].positive],
+        negative: [...categoryMarks[c.key].negative],
+      }]))
+    )); } catch {}
+  } catch (e) { console.warn('[category_marks] server load failed:', e); }
+}
+async function pushCategoryMarksToServer() {
+  try {
+    const payload = { category_marks: {} };
+    for (const c of LB_CATEGORIES) {
+      payload.category_marks[c.key] = {
+        positive: [...categoryMarks[c.key].positive],
+        negative: [...categoryMarks[c.key].negative],
+      };
+    }
+    const r = await fetch('/api/category_marks', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) throw new Error('http ' + r.status);
+    // Baseline catches up after successful push
+    const base = {};
+    for (const c of LB_CATEGORIES) {
+      base[c.key] = {
+        positive: [...categoryMarks[c.key].positive].sort(),
+        negative: [...categoryMarks[c.key].negative].sort(),
+      };
+    }
+    categoryMarksBaseline = base;
+    return true;
+  } catch (e) {
+    console.warn('[category_marks] push failed:', e);
+    return false;
+  }
+}
+
+async function pushMarksToServer() {
+  // Called from saveChanges(). Sends ONLY marks that correspond to existing
+  // items (no orphans) to the server, which replaces the marks table atomically.
+  // Orphans are dropped from the JS `marked` Set + localStorage too, so they
+  // don't accumulate across sessions.
+  try {
+    const ids = new Set(allData.map(r => r.id));
+    const real = [...marked].filter(m => ids.has(m));
+    const orphans = marked.size - real.length;
+    const r = await fetch('/api/marks', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ids: real}),
+    });
+    if (!r.ok) throw new Error('http ' + r.status);
+    // Drop orphans from JS state + localStorage too
+    if (orphans > 0) {
+      marked = new Set(real);
+      try { localStorage.setItem('marked', JSON.stringify(real)); } catch {}
+      console.info(`[marks] dropped ${orphans} orphan mark(s) on save`);
+    }
+    marksBaseline = new Set(real);   // baseline catches up — dirty cleared
+    return true;
+  } catch (e) {
+    console.warn('[marks] push failed:', e);
+    return false;
+  }
+}
+
+// ── Bulk-action helpers ──────────────────────────────────────────────────────
+// All bulk ops work on ★ items that ALSO fall under the current filter
+// (Source + Session + Разметка + Holdout + age + eval). They do NOT call the
+// server — changes go through changes[]/toConfirm/hidden as if the user did
+// them one by one, so the existing "Сохранить" flow commits everything
+// atomically.
+//
+// Scope rule: marked ∩ filteredData. If you have 47 ★ from earlier sessions
+// but they're outside your current Source=K30 filter — they will NOT be
+// touched. To act on those 47, switch Source to "Отмеченные".
+//
+// markPage()              — add all visible cards on current page to ★
+// unmarkAll()             — clear ★ set (with confirm)
+// bulkConfirmMarked()     — confirm ★ ∩ filter
+// bulkDeleteMarked()      — delete ★ ∩ filter
+// bulkRelabelMarked(lbl)  — set label + confirm for ★ ∩ filter
+
+function _visibleOnPage() {
+  const pgSize = parseInt(document.getElementById('f-pgsize').value);
+  const start  = (currentPage-1)*pgSize;
+  return filteredData.slice(start, start+pgSize);
+}
+
+// Items both ★ and matching the current filter (filteredData).
+function _markedInScope() {
+  if (!marked.size) return [];
+  const idsInFilter = new Set(filteredData.map(r => r.id));
+  return [...marked].filter(id => idsInFilter.has(id));
+}
+
+function markPage() {
+  let added = 0;
+  for (const r of _visibleOnPage()) {
+    if (!marked.has(r.id)) {
+      marked.add(r.id);
+      added++;
+      const cardEl = document.getElementById('card-' + r.id);
+      if (cardEl) {
+        cardEl.classList.add('marked');
+        const btn = cardEl.querySelector('.mark-btn');
+        if (btn) btn.textContent = '★';
+      }
+    }
+  }
+  persistMarked();
+  updateStats();
+  updateExportBtn();
+  updateBulkActionsUI();
+  updateDirty();
+  if (added > 0) document.getElementById('status').textContent = `★ ${added} добавлено (всего ${marked.size})`;
+}
+
+function unmarkAll() {
+  if (!marked.size) return;
+  if (!confirm(`Снять все ${marked.size} ★ отметок?`)) return;
+  const ids = [...marked];
+  marked.clear();
+  persistMarked();
+  for (const id of ids) {
+    const cardEl = document.getElementById('card-' + id);
+    if (cardEl) {
+      cardEl.classList.remove('marked');
+      const btn = cardEl.querySelector('.mark-btn');
+      if (btn) btn.textContent = '☆';
+    }
+  }
+  updateStats();
+  updateExportBtn();
+  updateBulkActionsUI();
+  updateDirty();
+}
+
+function bulkConfirmMarked() {
+  const scope = _markedInScope();
+  if (!scope.length) {
+    alert('★ в текущей выборке не найдено. Переключи фильтры или Источник=Отмеченные, чтобы охватить нужные.');
+    return;
+  }
+  let n = 0;
+  for (const id of scope) {
+    const r = allData.find(x => x.id === id);
+    if (!r) continue;
+    if (r.source === 'labelstudio') continue;
+    if (r.label_confirmed) continue;
+    if (!effectiveLabel(r)) continue;
+    toConfirm.add(id);
+    const cardEl = document.getElementById('card-' + id);
+    if (cardEl) {
+      const cb = cardEl.querySelector('.confirm-badge');
+      if (cb) { cb.className = 'confirm-badge human'; cb.textContent = '✓'; cb.title = 'Подтверждено (pending save)'; }
+    }
+    n++;
+  }
+  updateDirty();
+  document.getElementById('status').textContent = `★ → ✓ ${n} → нажми Сохранить`;
+}
+
+function bulkDeleteMarked() {
+  const scope = _markedInScope();
+  if (!scope.length) {
+    alert('★ в текущей выборке не найдено. Переключи фильтры или Источник=Отмеченные, чтобы охватить нужные.');
+    return;
+  }
+  if (!confirm(`Удалить ${scope.length} отмеченных в текущей выборке?\nИзменения применятся только после нажатия Сохранить.`)) return;
+  let n = 0;
+  for (const id of scope) {
+    if (hidden.has(id)) continue;
+    hidden.add(id);
+    const cardEl = document.getElementById('card-' + id);
+    if (cardEl) cardEl.classList.add('hidden-pending');
+    n++;
+  }
+  updateDirty();
+  document.getElementById('status').textContent = `★ → 🗑 ${n} → нажми Сохранить`;
+}
+
+function bulkRelabelMarked(newLabel) {
+  if (!['child','teen','adult'].includes(newLabel)) return;
+  const scope = _markedInScope();
+  if (!scope.length) {
+    alert('★ в текущей выборке не найдено. Переключи фильтры или Источник=Отмеченные, чтобы охватить нужные.');
+    return;
+  }
+  if (!confirm(`Установить статус «${newLabel}» для ${scope.length} отмеченных в выборке?\nИзменения применятся только после нажатия Сохранить.`)) return;
+  let n = 0;
+  for (const id of scope) {
+    const r = allData.find(x => x.id === id);
+    if (!r) continue;
+    if (r.source === 'labelstudio') continue;
+    changes[id] = changes[id] || {};
+    changes[id].label = newLabel;
+    changes[id].variant = (newLabel === 'adult') ? 'negative' : 'positive';
+    toConfirm.add(id);
+    const cardEl = document.getElementById('card-' + id);
+    if (cardEl) {
+      cardEl.classList.remove('lbl-child','lbl-teen','lbl-adult');
+      cardEl.classList.add('lbl-' + newLabel, 'modified');
+      const cb = cardEl.querySelector('.confirm-badge');
+      if (cb) { cb.className = 'confirm-badge human'; cb.textContent = '✓'; cb.title = 'Подтверждено (pending save)'; }
+    }
+    n++;
+  }
+  updateDirty();
+  document.getElementById('status').textContent = `★ → «${newLabel}» ${n} → нажми Сохранить`;
+}
+
+function toggleBulkBar() {
+  const bar = document.getElementById('bulk-bar');
+  const btn = document.getElementById('bulk-toggle-btn');
+  if (!bar) return;
+  const open = !bar.classList.contains('open');
+  bar.classList.toggle('open', open);
+  if (btn) btn.classList.toggle('active', open);
+  if (open) updateBulkActionsUI();
+}
+
+function updateBulkActionsUI() {
+  const nTot = marked.size;
+  const scope = _markedInScope();
+  const nScope = scope.length;
+  const scopeEl = document.getElementById('bulk-scope-cnt');
+  const totalEl = document.getElementById('bulk-total-cnt');
+  if (scopeEl) scopeEl.textContent = nScope;
+  if (totalEl) totalEl.textContent = nTot;
+  // Counts on bulk buttons reflect scope, not total marked
+  for (const k of ['confirm','delete']) {
+    const el = document.getElementById('bulk-' + k + '-cnt');
+    if (el) el.textContent = nScope > 0 ? ` ${nScope}` : '';
+  }
+  const mcCnt = document.getElementById('mark-clear-cnt');
+  if (mcCnt) mcCnt.textContent = nTot > 0 ? ` (${nTot})` : '';
+  // Disable bulk buttons when nothing in scope
+  document.querySelectorAll('#bulk-bar .bulk-btn').forEach(b => { b.disabled = nScope === 0; });
+  // mark-clear active when there are any marks (total)
+  const mc = document.getElementById('mark-clear-btn');
+  if (mc) mc.disabled = nTot === 0;
 }
 function toggleMark(id) {
   if (!id) return;
   if (marked.has(id)) marked.delete(id); else marked.add(id);
   persistMarked();
+  updateBulkActionsUI();
+  if (typeof updateDirty === 'function') updateDirty();
   // sync UI: card class + button look
   const cardEl = document.getElementById('card-' + id);
   if (cardEl) {
@@ -2335,6 +3281,38 @@ function lgbmThrFor(version) {
   return lgbmV6Thr;
 }
 
+// Visual shift-trail on threshold sliders — draws a coloured strip from the
+// saved baseline to the current slider value, plus a small tick at the baseline.
+// Call after any slider movement or baseline update.
+function updateThrTrail(ver) {
+  const inp = document.getElementById('thr-' + ver);
+  const trail = document.getElementById('thr-' + ver + '-trail');
+  const base  = document.getElementById('thr-' + ver + '-base');
+  if (!inp || !trail || !base) return;
+  const lo = parseFloat(inp.min)   || 0;
+  const hi = parseFloat(inp.max)   || 1;
+  const cur = parseFloat(inp.value) || 0;
+  const baseVal = (lgbmBaseThr[ver] != null) ? lgbmBaseThr[ver] : cur;
+  const span = (hi - lo) || 1;
+  // Slider track has small lateral padding for the thumb (~6px each side).
+  // Map [lo..hi] into [PAD .. 100% - PAD] of the wrapper width.
+  const PAD_PCT = 5;   // approximate (thumb radius ÷ track width)
+  const usable = 100 - 2 * PAD_PCT;
+  const toPct = v => PAD_PCT + (v - lo) / span * usable;
+  const curPct  = toPct(cur);
+  const basePct = toPct(baseVal);
+  const left = Math.min(curPct, basePct);
+  const width = Math.abs(curPct - basePct);
+  trail.style.left  = left + '%';
+  trail.style.width = width + '%';
+  trail.classList.toggle('up',   cur >  baseVal);
+  trail.classList.toggle('down', cur <  baseVal);
+  base.style.left = basePct + '%';
+}
+function updateAllThrTrails() {
+  for (const v of ['v6','v8','v11','k30tom']) updateThrTrail(v);
+}
+
 function lgbmIsBlocked(entry, version) {
   if (!entry) return null;
   return entry.lgbm >= lgbmThrFor(version);
@@ -2368,9 +3346,44 @@ function _itemCat(r) {
 function _sourceMatch(r) {
   if (holdoutMode && !isInHoldout(r)) return false;
   const sel = (document.getElementById('f-source') || {}).value || 'all';
-  if (sel === 'labelstudio') return r.source === 'labelstudio';
-  if (sel === 'grafana')     return r.source === 'grafana';
-  if (sel === 'k30')         return r.source === 'k30';
+  if (sel === 'labelstudio') {
+    if (r.source !== 'labelstudio') return false;
+  } else if (sel === 'grafana') {
+    if (r.source !== 'grafana') return false;
+  } else if (sel === 'k30') {
+    if (r.source !== 'k30') return false;
+  } else if (sel === 'borderlands') {
+    if (r.source !== 'borderlands') return false;
+  } else if (sel === 'marked') {
+    if (!marked.has(r.id)) return false;
+  }
+  // Excluded sessions (only meaningful when looking at "Все"; specific source
+  // picks already constrain the view). This makes computeAuc / stats / outcome
+  // calculations honour the exclude checklist — otherwise excluded items would
+  // still skew the AUC and TP/FP/TN/FN counts even though they're invisible.
+  if (sel === 'all' && excludedSessions.size > 0) {
+    const k = _exclKeyFor(r);
+    if (k && excludedSessions.has(k)) return false;
+  }
+  // Session filter — both Grafana and LS use date-prefix match now. LS
+  // legacy_initial collapses under sentinel 'old'.
+  const ssel = (document.getElementById('f-session') || {}).value || 'all';
+  if (ssel !== 'all') {
+    if (r.source === 'grafana') {
+      if ((r.session || '').slice(0, 10) !== ssel) return false;
+    } else if (r.source === 'labelstudio') {
+      const sess = r.session || '';
+      if (ssel === 'old') {
+        if (sess !== 'legacy_initial') return false;
+      } else {
+        if (sess.slice(0, 10) !== ssel) return false;
+      }
+    } else {
+      // k30 / other source — session filter doesn't apply; show nothing if a
+      // session is explicitly picked while looking outside Grafana/LS.
+      return false;
+    }
+  }
   return true;
 }
 
@@ -2422,6 +3435,78 @@ function opScoreAt(ver, thr) {
   if (!p_tot || !n_tot) return null;
   const tpr = p_blk / p_tot, fpr = n_blk / n_tot;
   return (tpr + (1 - fpr)) / 2;
+}
+
+// Find the threshold that maximizes balanced accuracy on the current filter.
+// Sweeps over candidate thresholds = midpoints between consecutive unique scores,
+// plus a fine grid (0.01 step) as backup. Returns {thr, op, n_pos, n_neg} or null.
+function bestThresholdFor(ver) {
+  const pos = [], neg = [];
+  allData.forEach(r => {
+    if (!_sourceMatch(r)) return;
+    const e = (evalData[r.id] || {})[ver];
+    if (!e || e.lgbm == null) return;
+    const cat = _itemCat(r);
+    if (cat === 'child' || cat === 'teen') pos.push(e.lgbm);
+    else if (cat === 'adult')              neg.push(e.lgbm);
+  });
+  if (!pos.length || !neg.length) return null;
+  // Candidate thresholds — midpoints between consecutive unique sorted scores
+  const allScores = pos.concat(neg).slice().sort((a, b) => a - b);
+  const candidates = new Set();
+  for (let i = 0; i < allScores.length - 1; i++) {
+    if (allScores[i] !== allScores[i+1]) {
+      candidates.add((allScores[i] + allScores[i+1]) / 2);
+    }
+  }
+  // Also throw in a fine 0.01 grid for robustness on small cohorts
+  for (let t = 0.01; t < 1.0; t += 0.01) candidates.add(Math.round(t * 100) / 100);
+  let best = null, bestOp = -Infinity;
+  for (const thr of candidates) {
+    let p_blk = 0, n_blk = 0;
+    for (const s of pos) if (s >= thr) p_blk++;
+    for (const s of neg) if (s >= thr) n_blk++;
+    const op = (p_blk / pos.length + 1 - n_blk / neg.length) / 2;
+    if (op > bestOp) { bestOp = op; best = thr; }
+  }
+  // Snap to 0.01 precision (slider step matches)
+  best = Math.round(best * 100) / 100;
+  // Re-evaluate at snapped value for accurate displayed op
+  return { thr: best, op: opScoreAt(ver, best), n_pos: pos.length, n_neg: neg.length };
+}
+
+// "Автовыбор" button — find best THR per model on current filter, push to sliders,
+// mark dirty. Does NOT save — that's still on the user via "Сохранить".
+function autoTuneLgbmThresholds() {
+  const summary = [];
+  for (const ver of ['v6','v8','v11','k30tom']) {
+    const res = bestThresholdFor(ver);
+    if (!res) { summary.push(`${ver.toUpperCase()}: нет данных`); continue; }
+    const oldThr = lgbmThrFor(ver);
+    const oldOp  = opScoreAt(ver, oldThr);
+    // Push to globals + slider + label
+    if (ver === 'v6')     lgbmV6Thr     = res.thr;
+    if (ver === 'v8')     lgbmV8Thr     = res.thr;
+    if (ver === 'v11')    lgbmV11Thr    = res.thr;
+    if (ver === 'k30tom') lgbmK30tomThr = res.thr;
+    const inp = document.getElementById('thr-' + ver);
+    const lbl = document.getElementById('thr-' + ver + '-val');
+    if (inp) inp.value = res.thr;
+    if (lbl) lbl.textContent = res.thr.toFixed(2);
+    const delta = (oldOp != null) ? (res.op - oldOp) : null;
+    const dStr  = delta != null ? `(Op ${(delta>=0?'+':'')}${delta.toFixed(3)})` : '';
+    summary.push(`${ver.toUpperCase()}: ${oldThr.toFixed(2)} → ${res.thr.toFixed(2)} ${dStr}`);
+  }
+  // Rebuild badges, stats, AUC chips. markThrDirty() will highlight Save button.
+  applyLgbmThresholds();
+  console.log('[autoTuneLgbmThresholds]', summary.join('  |  '));
+  // Show a transient toast in the Save button
+  const btn = document.getElementById('lgbm-auto-thr-btn');
+  if (btn) {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Подобрано';
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  }
 }
 
 function refreshAucDisplays() {
@@ -2497,6 +3582,7 @@ async function loadSavedThresholds() {
     if (inp) inp.value = val;
     if (lbl) lbl.textContent = val.toFixed(2);
   }
+  updateAllThrTrails();
 }
 
 async function saveLgbmThresholds() {
@@ -2517,6 +3603,7 @@ async function saveLgbmThresholds() {
       lgbmBaseThr = { ...payload };
       try { localStorage.setItem('lgbmThr', JSON.stringify(payload)); } catch {}
       refreshAucDisplays();
+      updateAllThrTrails();    // baseline jumped to current → trail width = 0
       const btn = document.getElementById('lgbm-save-thr-btn');
       if (btn) {
         btn.classList.remove('dirty');
@@ -2629,8 +3716,25 @@ function buildPipeBadge(wrap, r) {
   wrap.querySelectorAll('.pipe-badge').forEach(el => el.remove());
 
   if (evalActive) {
+    // LGBM-mode badge: use gallery's LOCAL eval — this is exactly the score the
+    // user sees in the LGBM row at the bottom of the card. The earlier behaviour
+    // (force Piper-V8 even with LGBM toggle on) was confusing because the badge
+    // could disagree with the row. If local eval is missing, fall back to Piper's
+    // V8 score so V8 still gets a verdict on items that haven't been re-scored
+    // locally yet.
+    let scoreSrc = null;
+    let scoreVal = null;
     const entry = (evalData[r.id] || {})[evalVersion];
-    if (!entry) {
+    if (entry && entry.lgbm != null) {
+      scoreVal = entry.lgbm; scoreSrc = 'gallery';
+    } else if (evalVersion === 'v8') {
+      const pr  = r.piper_result || {};
+      const lgs = ((pr.siglip2_details || {}).underage || {}).lgbm || {};
+      if (typeof lgs.score === 'number') {
+        scoreVal = lgs.score; scoreSrc = 'piper';
+      }
+    }
+    if (scoreVal == null) {
       const pb = document.createElement('div');
       pb.className = 'pipe-badge other';
       pb.textContent = '— нет скоринга';
@@ -2638,14 +3742,14 @@ function buildPipeBadge(wrap, r) {
       return;
     }
     const thr = lgbmThrFor(evalVersion);
-    const blocked = entry.lgbm >= thr;
+    const blocked = scoreVal >= thr;
     const verLabel = evalVersion.toUpperCase();
     const pb = document.createElement('div');
     pb.className = 'pipe-badge ' + (blocked ? 'underage' : 'passed');
     pb.textContent = blocked
       ? `⛔ ${verLabel} ⩾ ${thr.toFixed(2)}`
       : `✓ ${verLabel} < ${thr.toFixed(2)}`;
-    pb.title = `${verLabel} score = ${entry.lgbm.toFixed(3)}`;
+    pb.title = `${verLabel} score = ${scoreVal.toFixed(3)} [${scoreSrc}]`;
     wrap.appendChild(pb);
     return;
   }
@@ -2672,8 +3776,27 @@ function buildPipeBadge(wrap, r) {
     return;
   }
 
-  // Filter off — legacy snapshot for AI items only
+  // Filter off — use the production V8 score from piper_result (set by Piper
+  // pipeline d2911d10bb at moderation time). This is the SAME score used by
+  // moderate_disagree.py to assign label, so badge ↔ label are always
+  // consistent — regardless of any drift between Piper's deployed V8 and the
+  // gallery-side LightGBM evaluation in evalData.
+  // Confirmed (human-set) items get nothing.
   if (r.label_confirmed) return;
+  const pr  = r.piper_result || {};
+  const lgs = ((pr.siglip2_details || {}).underage || {}).lgbm || {};
+  const v8FromPiper = (typeof lgs.score === 'number') ? lgs.score : null;
+  if (v8FromPiper != null) {
+    const thr = lgbmThrFor('v8');
+    const blocked = v8FromPiper >= thr;
+    const pb = document.createElement('div');
+    pb.className = 'pipe-badge ' + (blocked ? 'underage' : 'passed');
+    pb.textContent = blocked ? '⛔ underage' : '✓ ok';
+    pb.title = `V8 (piper) score = ${v8FromPiper.toFixed(3)} (thr ${thr.toFixed(2)})`;
+    wrap.appendChild(pb);
+    return;
+  }
+  // Fallback to legacy siglip2-tag snapshot when piper V8 score is unavailable
   const ps = pipeStatus(r);
   if (!ps || ps === 'unprocessed') return;
   const pb = document.createElement('div');
@@ -2711,6 +3834,7 @@ function applyLgbmThresholds() {
   rebuildAllPipeBadges();
   refreshAucDisplays();
   markThrDirty();
+  updateAllThrTrails();
   document.querySelectorAll('.eval-row').forEach(el => {
     const cid = el.id.replace('eval-', '');
     const item = allData.find(x => x.id === cid);
@@ -2736,6 +3860,7 @@ function onThrSlide(verKey) {
   if (verKey === 'k30tom') lgbmK30tomThr = v;
   rebuildAllPipeBadges();
   markThrDirty();
+  updateThrTrail(verKey);
   clearTimeout(_lgbmDebounce);
   _lgbmDebounce = setTimeout(() => {
     document.querySelectorAll('.eval-row').forEach(el => {
@@ -2757,54 +3882,44 @@ function updateLgbmStats() {
   // Best score in each row gets a small ★.
   const cats = ['child', 'teen', 'adult'];
   const totals = {child: 0, teen: 0, adult: 0};
-  // Per-version per-category {blk, tot}: tot counts only items WITH a score for that version.
-  // Sweep tables use the same denominator, so this keeps gallery numbers comparable.
+  // Per-version per-LABEL category {blk, tot}:
+  //   tot = items labelled `cat` AND scored by this version
+  //   blk = items labelled `cat` AND scored by this version AND model said BLOCK (score >= thr)
+  // → child / teen columns show RECALL (higher better)
+  // → adult column shows FPR (lower better)
   const stats = {
     v8:     {child:{blk:0,tot:0,fb:0}, teen:{blk:0,tot:0,fb:0}, adult:{blk:0,tot:0,fb:0}, has: 0},
     v11:    {child:{blk:0,tot:0,fb:0}, teen:{blk:0,tot:0,fb:0}, adult:{blk:0,tot:0,fb:0}, has: 0},
     v6:     {child:{blk:0,tot:0,fb:0}, teen:{blk:0,tot:0,fb:0}, adult:{blk:0,tot:0,fb:0}, has: 0},
     k30tom: {child:{blk:0,tot:0,fb:0}, teen:{blk:0,tot:0,fb:0}, adult:{blk:0,tot:0,fb:0}, has: 0},
   };
-  // Respect source filter (f-source): "all" / "labelstudio" / "grafana" / "k30"
-  const srcSel = (document.getElementById('f-source') || {}).value || 'all';
-  const sourceMatch = (r) => {
-    if (srcSel === 'labelstudio') return r.source === 'labelstudio';
-    if (srcSel === 'grafana')     return r.source === 'grafana';
-    if (srcSel === 'k30')         return r.source === 'k30';
-    return true;
-  };
-  allData.filter(r => {
-    if (!sourceMatch(r)) return false;
-    if (holdoutMode && !isInHoldout(r)) return false;
-    return true;
-  }).forEach(r => {
-    const cat = (r.label || '').toLowerCase();
-    if (!cats.includes(cat)) return;
-    totals[cat]++;
+
+  allData.filter(_sourceMatch).forEach(r => {
     const ed = evalData[r.id] || {};
+    const lbl = (r.label || '').toLowerCase();
+    if (!cats.includes(lbl)) return;          // item has no usable label → skip from stats
+    totals[lbl]++;
     for (const ver of ['v8','v11','v6','k30tom']) {
       const e = ed[ver];
       if (!e || e.lgbm == null) continue;
       stats[ver].has++;
-      stats[ver][cat].tot++;
-      if (e.fallback_taxonomy) {
-        stats[ver][cat].fb = (stats[ver][cat].fb || 0) + 1;
-      }
-      // All four models (incl. Tom) use UI sliders via lgbmThrFor
-      if (e.lgbm >= lgbmThrFor(ver)) stats[ver][cat].blk++;
+      stats[ver][lbl].tot++;
+      if (e.lgbm >= lgbmThrFor(ver)) stats[ver][lbl].blk++;
+      if (e.fallback_taxonomy) stats[ver][lbl].fb = (stats[ver][lbl].fb || 0) + 1;
     }
   });
 
+  // Coloring: child/teen are RECALL (high=good), adult is FPR (low=good).
   const dotClass = (cat, pct) => {
-    if (cat === 'adult') {  // FPR — lower is better
-      if (pct <= 5)   return 'lst-good';
-      if (pct <= 20)  return 'lst-mid';
-      return 'lst-bad';
-    } else {                // recall — higher is better
-      if (pct >= 95)  return 'lst-good';
-      if (pct >= 80)  return 'lst-mid';
+    if (cat === 'adult') {
+      if (pct <= 5)  return 'lst-good';
+      if (pct <= 15) return 'lst-mid';
       return 'lst-bad';
     }
+    // child / teen
+    if (pct >= 90) return 'lst-good';
+    if (pct >= 70) return 'lst-mid';
+    return 'lst-bad';
   };
 
   // Transposed: rows = versions (V6, V8, V11), columns = categories (child, teen, adult)
@@ -2812,30 +3927,33 @@ function updateLgbmStats() {
   const verNames = {v8: 'V8', v11: 'V11', v6: 'V6', k30tom: 'Tom_K30'};
   const verCls   = {v8: 'lgbm-v8-blocked', v11: 'lgbm-v11-blocked', v6: 'lgbm-v6-blocked', k30tom: 'lgbm-tom-blocked'};
   const catIcons = {child: '👶', teen: '🧒', adult: '🧑'};
-  const catLabels = {child: 'child', teen: 'teen', adult: 'adult ✗FP'};
+  const catLabels = {child: 'child', teen: 'teen', adult: 'adult <span class="lst-fp-tag">✗FP</span>'};
   const html = [];
 
-  // Header row: empty | child | teen | adult
+  // Header row: empty | child | teen | adult ✗FP
   html.push(`<div class="lst-rowlbl"></div>`);
   for (const cat of cats) {
     html.push(`<div class="lst-hdr">${catIcons[cat]} ${catLabels[cat]}</div>`);
   }
 
-  // Pre-compute best version per category (for ★) — denominator: items with V11/V8/V6 score
+  // Best version per category: highest RECALL (child/teen) or lowest FPR (adult).
+  // Excludes fallback-only versions (e.g. V11 when all its scores are fallback taxonomy).
   const bestVerPerCat = {};
   for (const cat of cats) {
-    let bestVer = null, bestVal = null;
-    for (const ver of versions) {
+    let best = null, bestVal = (cat === 'adult') ? Infinity : -1;
+    for (const ver of ['v6','v8','v11','k30tom']) {
       const s = stats[ver][cat];
       if (!s.tot) continue;
-      const sc = s.blk / s.tot * 100;
-      if (cat === 'adult') {              // lower is better (FPR)
-        if (bestVal == null || sc < bestVal) { bestVal = sc; bestVer = ver; }
-      } else {                            // higher is better (recall)
-        if (bestVal == null || sc > bestVal) { bestVal = sc; bestVer = ver; }
+      // Skip versions where everything counted was fallback taxonomy (no native score signal)
+      if (s.fb && s.fb >= s.tot) continue;
+      const pct = s.blk / s.tot * 100;
+      if (cat === 'adult') {
+        if (pct < bestVal) { bestVal = pct; best = ver; }
+      } else {
+        if (pct > bestVal) { bestVal = pct; best = ver; }
       }
     }
-    bestVerPerCat[cat] = bestVer;
+    bestVerPerCat[cat] = best;
   }
 
   // Rows for each version
@@ -2882,10 +4000,14 @@ async function loadData() {
   allData  = await dr.json();
   sessions = await sr.json();
   evalData = await er.json();
+  await loadMarksFromServer();   // merge localStorage with DB-stored marks
+  await loadCategoryMarksFromServer();   // merge localStorage with DB-stored category_marks
   buildSessionFilter();
+  buildExcludePanel();
   updateStats();
   applyFilter();
   updateLgbmStats();
+  updateBulkActionsUI();   // restore bulk-action toolbar from persisted marked set
   // Compute static AUC per version (one-shot after data is ready)
   for (const ver of ['v6','v8','v11','k30tom']) {
     modelAuc[ver] = computeAucForVersion(ver);
@@ -2921,16 +4043,151 @@ async function loadData() {
 }
 
 function buildSessionFilter() {
+  // Source-aware:
+  //   * source=grafana    → date-prefix groups, e.g. "2026-05-26 UTC (n)"
+  //   * source=labelstudio → one option per LS session string,
+  //                          "legacy_initial" renamed to "Old"
+  //   * source=all|k30|marked → dropdown disabled (sessions don't make sense)
   const sel = document.getElementById('f-session');
+  const wrap = document.getElementById('session-wrap');
   while (sel.options.length > 1) sel.remove(1);
-  // sessions are already sorted newest-first from server
-  sessions.forEach((s, i) => {
-    // Count images in this session
-    const cnt = allData.filter(r => r.source === 'grafana' && r.session === s).length;
-    const label = `${s}  (${cnt})`;
-    const opt = new Option(label, s);
-    sel.appendChild(opt);
-  });
+
+  const src = (document.getElementById('f-source') || {}).value || 'all';
+  if (src !== 'grafana' && src !== 'labelstudio') {
+    // No per-source sessions to show — hide the whole label and reset value
+    sel.value = 'all';
+    if (wrap) wrap.style.display = 'none';
+    return;
+  }
+  if (wrap) wrap.style.display = '';
+  sel.disabled = false;
+
+  // Backend now returns [{session, source}, ...]. Old shape was [str]. Be tolerant.
+  const filt = sessions.filter(s =>
+    (typeof s === 'object' && s !== null) ? (s.source === src) : (src === 'grafana')
+  );
+
+  // Both sources use the same "YYYY-MM-DD UTC (n)" presentation.
+  // Option value is the date prefix (10 chars) so _sourceMatch can do a uniform
+  // slice(0,10) compare. LS legacy_initial collapses under the sentinel value
+  // 'old' displayed as "Old (n)".
+  const keyFor = (sess) => {
+    if (src === 'labelstudio' && sess === 'legacy_initial') return 'old';
+    return (sess || '').slice(0, 10);
+  };
+  const keyOrder = [];
+  for (const entry of filt) {
+    const sess = (typeof entry === 'object') ? entry.session : entry;
+    const k = keyFor(sess);
+    if (!keyOrder.includes(k)) keyOrder.push(k);
+  }
+  for (const key of keyOrder) {
+    const cnt = allData.filter(r => {
+      if (r.source !== src) return false;
+      return keyFor(r.session || '') === key;
+    }).length;
+    let label;
+    if (key === 'old')      label = `Old  (${cnt})`;
+    else if (key === '')    label = `unknown  (${cnt})`;
+    else                    label = `${key} UTC  (${cnt})`;
+    sel.appendChild(new Option(label, key));
+  }
+}
+
+// ── Excluded-sessions checklist ──────────────────────────────────────────────
+// Key shape: "<source>:<dateKey>", e.g. "grafana:2026-05-26", "labelstudio:old",
+// "labelstudio:2026-05-28". Each item belongs to exactly one such bucket so we
+// can exclude precise slices when source = "Все".
+function _exclKeyFor(r) {
+  if (!r) return '';
+  if (r.source === 'grafana') {
+    return 'grafana:' + ((r.session || '').slice(0, 10));
+  }
+  if (r.source === 'labelstudio') {
+    const s = r.session || '';
+    return 'labelstudio:' + (s === 'legacy_initial' ? 'old' : s.slice(0, 10));
+  }
+  if (r.source === 'borderlands') {
+    // All borderlands items belong to a single logical bucket (the import is
+    // one-shot per dataset). One checkbox hides the whole batch.
+    return 'borderlands:all';
+  }
+  return ''; // k30 has no session bucket
+}
+
+function buildExcludePanel() {
+  const list = document.getElementById('excl-panel-list');
+  if (!list) return;
+  list.innerHTML = '';
+  // Build {key → {source, label, count}} from current dataset, then group by source
+  const buckets = new Map();
+  for (const r of allData) {
+    const k = _exclKeyFor(r);
+    if (!k) continue;
+    if (!buckets.has(k)) {
+      let label;
+      const [src, dkey] = k.split(':', 2);
+      if (dkey === 'old')       label = 'Old';
+      else if (dkey === 'all')   label = 'Все';   // borderlands one-shot bucket
+      else if (dkey === '')     label = 'unknown';
+      else                      label = `${dkey} UTC`;
+      buckets.set(k, { source: src, label: label, count: 0 });
+    }
+    buckets.get(k).count++;
+  }
+  // Group: Grafana first (newest dates first), then Label Studio
+  const groups = [
+    { src: 'grafana',     hdr: 'Grafana' },
+    { src: 'labelstudio', hdr: 'Label Studio' },
+    { src: 'borderlands', hdr: 'Borderlands' },
+  ];
+  for (const g of groups) {
+    const items = [...buckets.entries()]
+      .filter(([, v]) => v.source === g.src)
+      .sort((a, b) => b[0].localeCompare(a[0])); // newest-first; "old" sorts last
+    if (!items.length) continue;
+    const hdr = document.createElement('div');
+    hdr.className = 'excl-grp';
+    hdr.textContent = g.hdr;
+    list.appendChild(hdr);
+    for (const [key, v] of items) {
+      const row = document.createElement('label');
+      row.className = 'excl-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = excludedSessions.has(key);
+      cb.addEventListener('change', () => {
+        if (cb.checked) excludedSessions.add(key);
+        else            excludedSessions.delete(key);
+        localStorage.setItem('excludedSessions', JSON.stringify([...excludedSessions]));
+        updateExcludeBtn();
+        applyFilter();
+        // Exclude changes the universe that drives AUC, LGBM stats and the
+        // per-version chip metrics — refresh them too. Same set of calls as
+        // the f-session change handler.
+        for (const ver of ['v6','v8','v11','k30tom']) modelAuc[ver] = computeAucForVersion(ver);
+        updateLgbmStats();
+        refreshAucDisplays();
+      });
+      const txt = document.createElement('span');
+      txt.textContent = v.label;
+      const cnt = document.createElement('span');
+      cnt.className = 'excl-cnt';
+      cnt.textContent = `(${v.count})`;
+      row.appendChild(cb); row.appendChild(txt); row.appendChild(cnt);
+      list.appendChild(row);
+    }
+  }
+  updateExcludeBtn();
+}
+
+function updateExcludeBtn() {
+  const btn   = document.getElementById('excl-btn');
+  const count = document.getElementById('excl-count');
+  if (!btn) return;
+  const n = excludedSessions.size;
+  if (count) count.textContent = `(${n})`;
+  btn.classList.toggle('active', n > 0);
 }
 
 // ── filters ───────────────────────────────────────────────────────────────────
@@ -2992,9 +4249,15 @@ function applyFilter() {
   // Update active eval version
   if (evalActive) evalVersion = document.getElementById('f-eval-ver').value;
 
-  // Show/hide session & pipeline dropdowns
-  const showSession = sf === 'grafana' || sf === 'all';
+  // Show/hide session dropdown — only meaningful when a specific source is picked
+  // (Grafana date batches OR Label Studio sessions). For "Все", "K30", "Отмеченные"
+  // the dropdown is hidden entirely.
+  const showSession = sf === 'grafana' || sf === 'labelstudio';
   document.getElementById('session-wrap').style.display = showSession ? '' : 'none';
+
+  // Exclude-sessions UI — only shown in "Все" mode.
+  const exclWrap = document.getElementById('excl-wrap');
+  if (exclWrap) exclWrap.style.display = (sf === 'all') ? 'flex' : 'none';
 
   let d = allData;
   if (holdoutMode) d = d.filter(isInHoldout);
@@ -3021,9 +4284,37 @@ function applyFilter() {
   else if (sf === 'labelstudio') d = d.filter(r => r.source === 'labelstudio');
   else if (sf === 'grafana') d = d.filter(r => r.source === 'grafana');
   else if (sf === 'k30')     d = d.filter(r => r.source === 'k30');
+  else if (sf === 'borderlands') d = d.filter(r => r.source === 'borderlands');
 
-  if (sf !== 'labelstudio' && ssf !== 'all')
-    d = d.filter(r => r.session === ssf);
+  // Session filter — applies to both Grafana AND Label Studio (date-prefix
+  // match in both cases; LS legacy_initial uses sentinel 'old').
+  if (ssf !== 'all') {
+    if (sf === 'grafana') {
+      d = d.filter(r => (r.session || '').slice(0, 10) === ssf);
+    } else if (sf === 'labelstudio') {
+      d = d.filter(r => {
+        const sess = r.session || '';
+        if (ssf === 'old') return sess === 'legacy_initial';
+        return sess.slice(0, 10) === ssf;
+      });
+    }
+    // For sf === 'all'/'k30'/'marked' the dropdown is hidden, but if ssf
+    // somehow has a non-'all' value, ignore it rather than emptying the gallery.
+  }
+
+  // Excluded sessions — applies ONLY in the "Все" mode. Specific source picks
+  // already constrain the view by source, so the exclude UI is hidden there.
+  // Items outside the Grafana/LS namespace (k30, future sources) get _exclKeyFor=''
+  // and are NEVER excluded by this mechanism — only an explicit Grafana/LS bucket
+  // pick filters; a bare '' in excludedSessions is impossible after the load-time
+  // sanity guard, but we double-check here to make the contract explicit.
+  if (sf === 'all' && excludedSessions.size > 0) {
+    d = d.filter(r => {
+      const k = _exclKeyFor(r);
+      if (!k) return true;                       // no namespace → keep always
+      return !excludedSessions.has(k);
+    });
+  }
 
   if (currentDomain !== 'underage') {
     // Non-underage: label filter maps to pending+committed status in current category
@@ -3037,7 +4328,11 @@ function applyFilter() {
     // 'all' → no filter
   } else {
     if (lf === 'unlabeled')   d = d.filter(r => !effectiveLabel(r));
-    else if (lf === 'unconfirmed') d = d.filter(r => r.source === 'grafana' && !r.label_confirmed && effectiveLabel(r));
+    else if (lf === 'unconfirmed') d = d.filter(r => r.source !== 'labelstudio' && !r.label_confirmed && !changes[r.id] && effectiveLabel(r));
+    else if (lf === 'underage') d = d.filter(r => {
+      const lbl = effectiveLabel(r);
+      return lbl === 'child' || lbl === 'teen';
+    });
     else if (lf !== 'all')   d = d.filter(r => effectiveLabel(r) === lf);
   }
 
@@ -3065,18 +4360,21 @@ function applyFilter() {
   currentPage  = 1;
   updateStats();
   renderPage();
+  if (typeof updateBulkActionsUI === 'function') updateBulkActionsUI();
 }
 
 function updateStats() {
-  const totals = { ls:0, gr:0, k30:0, child:0, teen:0, adult:0, unlabeled:0, confirmed:0, unconfirmed:0 };
+  const totals = { ls:0, gr:0, k30:0, bl:0, child:0, teen:0, adult:0, unlabeled:0, confirmed:0, unconfirmed:0 };
   allData.forEach(r => {
-    if (r.source === 'labelstudio') totals.ls++;
-    else if (r.source === 'k30')        totals.k30++;
+    if (r.source === 'labelstudio')      totals.ls++;
+    else if (r.source === 'k30')         totals.k30++;
+    else if (r.source === 'borderlands') totals.bl++;
     else                                 totals.gr++;
     const lbl = effectiveLabel(r) || 'unlabeled';
     if (totals[lbl] !== undefined) totals[lbl]++;
-    if (r.source === 'grafana') {
+    if (r.source !== 'labelstudio') {
       // confirmed = human-labeled OR just saved in this session
+      // AI badge shown on both grafana and k30 unconfirmed items → counter must include both
       const isConfirmed = changes[r.id] ? true : r.label_confirmed;
       if (effectiveLabel(r) && !isConfirmed) totals.unconfirmed++;
       if (isConfirmed) totals.confirmed++;
@@ -3137,8 +4435,15 @@ function renderCard(r) {
   img.src = r._serve_url || r.thumb_url || '';
   img.onerror = () => {
     // Fallback to S3 thumb_url if local /img/ fails
-    if (r.thumb_url && img.src !== r.thumb_url) img.src = r.thumb_url;
-    else wrap.innerHTML = '<span style="color:#333;font-size:10px">no image</span>';
+    if (r.thumb_url && img.src !== r.thumb_url) { img.src = r.thumb_url; return; }
+    // Replace ONLY the <img> with a placeholder so the absolutely-positioned
+    // hide/mark/src badges remain clickable (otherwise broken items couldn't
+    // be deleted from the gallery at all).
+    const placeholder = document.createElement('span');
+    placeholder.style.cssText = 'color:#666;font-size:11px;text-align:center;line-height:1.3;padding:8px';
+    placeholder.textContent = 'no image\n(broken URL)';
+    placeholder.style.whiteSpace = 'pre-line';
+    if (img.parentNode === wrap) wrap.replaceChild(placeholder, img);
   };
   img.onclick = () => openLb(r);
   wrap.appendChild(img);
@@ -3164,8 +4469,9 @@ function renderCard(r) {
   // Source badge
   const sbadge = document.createElement('div');
   const isK30 = r.source === 'k30';
-  sbadge.className = 'src-badge ' + (isLS ? 'ls' : isK30 ? 'k30' : 'gr');
-  sbadge.textContent = isLS ? 'LS' : isK30 ? 'K30' : 'GR';
+  const isBL = r.source === 'borderlands';
+  sbadge.className = 'src-badge ' + (isLS ? 'ls' : isK30 ? 'k30' : isBL ? 'bl' : 'gr');
+  sbadge.textContent = isLS ? 'LS' : isK30 ? 'K30' : isBL ? 'BL' : 'GR';
   wrap.appendChild(sbadge);
 
   // Viewed-in-lightbox badge (👁) — shown for items the user has opened in the lb during this session.
@@ -3367,7 +4673,9 @@ function toggleHide(id, source) {
 
 function updateDirty() {
   const npc = pendingCategoryCount();
-  const n = Object.keys(changes).length + hidden.size + toConfirm.size + npc;
+  const marksDelta = (typeof marksDirty === 'function' && marksDirty()) ? 1 : 0;
+  const catDelta = (typeof categoryMarksDirty === 'function' && categoryMarksDirty()) ? 1 : 0;
+  const n = Object.keys(changes).length + hidden.size + toConfirm.size + npc + marksDelta + catDelta;
   const btn = document.getElementById('save-btn');
   const cbtn = document.getElementById('confirm-btn');
   if (n > 0) {
@@ -3378,6 +4686,8 @@ function updateDirty() {
     if (hidden.size)     parts.push('удал.: ' + hidden.size);
     if (toConfirm.size)  parts.push('подтв.: ' + toConfirm.size);
     if (npc)             parts.push('кат.: ' + npc);
+    if (marksDelta)      parts.push('★: ' + marked.size);
+    if (catDelta)        parts.push('кат NSFW');
     btn.textContent = '💾 Сохранить (' + parts.join('  ') + ')';
     document.getElementById('status').textContent = parts.join('  ');
   } else {
@@ -3414,13 +4724,17 @@ async function confirmPage() {
   });
   if (count > 0) {
     updateDirty();
-    // One-click flow: confirmation IS save. Eliminates the "press Сохранить again"
-    // step the user found confusing.
-    await saveChanges();
+    // Confirm-page is a LABEL-ONLY operation. Don't push ★ or NSFW-categories
+    // even if their dirty state was already pending — they have their own
+    // Сохранить button click for that.
+    await saveChanges({skipMarks: true, skipCategoryMarks: true});
   }
 }
 
-async function saveChanges() {
+async function saveChanges(opts) {
+  // opts (optional): { skipMarks: bool, skipCategoryMarks: bool }
+  // confirmPage() passes both flags so a "Подтвердить страницу" click never
+  // pushes ★ or NSFW-category changes — those have their own dedicated save.
   // Auto-confirm pass: items the user has touched or viewed in this session, which
   // have an effective label and are grafana/k30 (LS does not need confirmation),
   // get implicitly added to toConfirm. This eliminates the double-save flow where
@@ -3438,8 +4752,15 @@ async function saveChanges() {
   for (const id of Object.keys(changes)) _autoConfirm(id);
   for (const id of viewedIds)            _autoConfirm(id);
 
-  if (!Object.keys(changes).length && !hidden.size && !toConfirm.size) return;
+  opts = opts || {};
+  const skipMarks = !!opts.skipMarks;
+  const skipCategoryMarks = !!opts.skipCategoryMarks;
+  const willPushMarks = !skipMarks && marksDirty();
+  const willPushCat   = !skipCategoryMarks && categoryMarksDirty();
+  if (!Object.keys(changes).length && !hidden.size && !toConfirm.size && !willPushMarks && !willPushCat) return;
   document.getElementById('save-btn').textContent = '⏳ Сохранение…';
+  if (willPushMarks) await pushMarksToServer();
+  if (willPushCat)   await pushCategoryMarksToServer();
   try {
     const r = await fetch('/api/save', {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -3693,6 +5014,18 @@ function renderLbView() {
   const cur = effectiveLabel(r) || '—';
   const lblCls = (cur === 'child' || cur === 'teen' || cur === 'adult') ? `lb-lbl-${cur}` : '';
 
+  // Coloured frame on the lightbox image — same rule as the card border:
+  // child=red, teen=orange, adult=green. Cleared when label is missing.
+  // (The existing `lbWrap` declaration further down is reused for the disagree
+  // frame; here we use a distinct name to avoid a const re-declaration error.)
+  const lbWrapEl = document.getElementById('lb-wrap');
+  if (lbWrapEl) {
+    lbWrapEl.classList.remove('lbl-child', 'lbl-teen', 'lbl-adult');
+    if (cur === 'child' || cur === 'teen' || cur === 'adult') {
+      lbWrapEl.classList.add('lbl-' + cur);
+    }
+  }
+
   // Per-model formatting with color grading by its own threshold
   const fmtScore = (entry, ver) => {
     if (!entry || entry.lgbm == null) return '<span class="lb-v lo">—</span>';
@@ -3862,15 +5195,18 @@ function _lbFlash(cls) {
 document.addEventListener('keydown', e => {
   const lbOpen = document.getElementById('lb').classList.contains('open');
   if (lbOpen) {
-    if (e.key === 'Escape') { closeLb(); e.preventDefault(); return; }
-    if (e.key === 'Enter')  { nextInLb(); e.preventDefault(); return; }
-    if (e.key === '1')      { lbSetLabel('child'); e.preventDefault(); return; }
-    if (e.key === '2')      { lbSetLabel('teen');  e.preventDefault(); return; }
-    if (e.key === '3')      { lbSetLabel('adult'); e.preventDefault(); return; }
-    if (e.key === '4')      { lbToggleDelete();    e.preventDefault(); return; }
+    // While lightbox is open, all hotkeys are claimed by it. Use
+    // stopImmediatePropagation so other keydown handlers (bulk-actions etc.)
+    // don't see the same keypress AFTER lb closes itself on Escape.
+    if (e.key === 'Escape') { closeLb(); e.preventDefault(); e.stopImmediatePropagation(); return; }
+    if (e.key === 'Enter')  { nextInLb(); e.preventDefault(); e.stopImmediatePropagation(); return; }
+    if (e.key === '1')      { lbSetLabel('child'); e.preventDefault(); e.stopImmediatePropagation(); return; }
+    if (e.key === '2')      { lbSetLabel('teen');  e.preventDefault(); e.stopImmediatePropagation(); return; }
+    if (e.key === '3')      { lbSetLabel('adult'); e.preventDefault(); e.stopImmediatePropagation(); return; }
+    if (e.key === '4')      { lbToggleDelete();    e.preventDefault(); e.stopImmediatePropagation(); return; }
     if (e.key === 'm' || e.key === 'M' || e.key === '5') {
       if (lbCurrent) { toggleMark(lbCurrent.id); renderLbView(); }
-      e.preventDefault(); return;
+      e.preventDefault(); e.stopImmediatePropagation(); return;
     }
   } else {
     if (e.key === 'Escape') { closePm(); }
@@ -3883,7 +5219,14 @@ document.addEventListener('mouseover', e => {
   const c = e.target.closest('.card'); hoveredId = c ? c.id.replace('card-','') : null;
 });
 document.addEventListener('keydown', e => {
-  if (!hoveredId || document.getElementById('lb').classList.contains('open')) return;
+  if (document.getElementById('lb').classList.contains('open')) return;
+  // Bulk-action hotkeys (no ESC here — Esc is reserved for the lightbox)
+  const inTyping = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT');
+  if (!inTyping) {
+    if (e.shiftKey && (e.key === 'A' || e.key === 'a')) { markPage();  e.preventDefault(); return; }
+    if (e.shiftKey && (e.key === 'D' || e.key === 'd')) { unmarkAll(); e.preventDefault(); return; }
+  }
+  if (!hoveredId) return;
   const map = {'1':'child','2':'teen','3':'adult'};
   if (map[e.key]) {
     const inp = document.querySelector(`input[name="lbl-${hoveredId}"][value="${map[e.key]}"]`);
@@ -3972,11 +5315,17 @@ function evalOutcome(entry, itemVariant) {
   if (!entry) return 'NA';
   const variant = entry.variant || itemVariant;
   if (!variant) return 'NA';
+  // CRITICAL: use the LIVE slider threshold via lgbmIsBlocked, not entry.blocked.
+  // entry.blocked is computed server-side at load time with static V8/V11=0.30,
+  // so it disagrees with the slider when the user moves it (e.g. to 0.39). The
+  // badge has always used the live threshold; outcome now matches.
+  const blocked    = lgbmIsBlocked(entry, evalVersion);
+  if (blocked === null) return 'NA';
   const shouldBlock = variant === 'positive';
-  if (shouldBlock && entry.blocked)  return 'TP';
-  if (shouldBlock && !entry.blocked) return 'FN';
-  if (!shouldBlock && !entry.blocked) return 'TN';
-  if (!shouldBlock && entry.blocked)  return 'FP';
+  if (shouldBlock &&  blocked) return 'TP';
+  if (shouldBlock && !blocked) return 'FN';
+  if (!shouldBlock && !blocked) return 'TN';
+  if (!shouldBlock &&  blocked) return 'FP';
   return 'NA';
 }
 
@@ -4228,12 +5577,22 @@ function getItemEvalOutcome(r) {
 
 // ── init ──────────────────────────────────────────────────────────────────────
 document.getElementById('f-source').addEventListener('change', () => {
+  // Session dropdown is scoped to source — rebuild it and reset its value first
+  // so a stale Grafana session string doesn't survive a switch to Label Studio.
+  const ss = document.getElementById('f-session');
+  if (ss) ss.value = 'all';
+  buildSessionFilter();
   applyFilter();
   for (const ver of ['v6','v8','v11']) { modelAuc[ver] = computeAucForVersion(ver); }
   updateLgbmStats();
   refreshAucDisplays();
 });
-document.getElementById('f-session').addEventListener('change', applyFilter);
+document.getElementById('f-session').addEventListener('change', () => {
+  applyFilter();
+  for (const ver of ['v6','v8','v11','k30tom']) modelAuc[ver] = computeAucForVersion(ver);
+  updateLgbmStats();
+  refreshAucDisplays();
+});
 document.getElementById('f-label').addEventListener('change', applyFilter);
 document.getElementById('f-eval-ver').addEventListener('change', () => {
   evalVersion = document.getElementById('f-eval-ver').value;
@@ -4248,6 +5607,32 @@ document.getElementById('f-eval-ver').addEventListener('change', () => {
 });
 document.getElementById('f-eval-outcome').addEventListener('change', applyFilter);
 document.getElementById('f-age-q3').addEventListener('change', applyFilter);
+
+// Exclude-sessions panel: toggle on button click, close on outside click,
+// "Сбросить" empties the set and rebuilds.
+(function wireExcludePanel() {
+  const btn   = document.getElementById('excl-btn');
+  const panel = document.getElementById('excl-panel');
+  const clear = document.getElementById('excl-clear');
+  if (!btn || !panel) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    panel.classList.toggle('open');
+  });
+  panel.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => panel.classList.remove('open'));
+  if (clear) clear.addEventListener('click', () => {
+    excludedSessions.clear();
+    localStorage.setItem('excludedSessions', JSON.stringify([]));
+    buildExcludePanel();
+    applyFilter();
+    // Same metric refresh as the per-checkbox handler so the LGBM bar
+    // matches the new (un)filtered universe.
+    for (const ver of ['v6','v8','v11','k30tom']) modelAuc[ver] = computeAucForVersion(ver);
+    updateLgbmStats();
+    refreshAucDisplays();
+  });
+})();
 document.getElementById('f-age-fd').addEventListener('change', applyFilter);
 document.getElementById('f-pgsize').addEventListener('change', () => {
   currentPage = 1; renderPage();
@@ -4265,6 +5650,7 @@ function refreshDomainUI() {
       { v: 'all',         t: 'Все' },
       { v: 'unlabeled',   t: 'Без разметки' },
       { v: 'unconfirmed', t: '⚡ Не подтверждено' },
+      { v: 'underage',    t: '⛔ underage (child + teen)' },
       { v: 'child',       t: 'child' },
       { v: 'teen',        t: 'teen' },
       { v: 'adult',       t: 'adult' },
@@ -4430,12 +5816,21 @@ class GalleryHandler(BaseHTTPRequestHandler):
             return self._send_json(grafana_sessions())
         if path == '/api/eval':
             return self._send_json(load_eval_data())
+        if path == '/api/marks':
+            return self._send_json({"ids": load_marks()})
+        if path == '/api/category_marks':
+            return self._send_json({"category_marks": load_category_marks()})
         if path == '/api/get_thr':
             return self._send_json(load_thresholds())
         if path == '/api/model_meta':
             return self._send_json(load_model_meta())
         if path == '/api/get_test_split':
-            p = BASE_DIR / 'data' / 'v11_test_split.json'
+            # Prefer the current 2026 split (V6c/V8cs80/V11cs80 are trained on it,
+            # 1828 items). Fall back to the legacy file (618 items) only if 2026
+            # is missing — keeps the gallery functional on older checkouts.
+            p2026 = BASE_DIR / 'data' / 'v11_test_split_2026.json'
+            plegacy = BASE_DIR / 'data' / 'v11_test_split.json'
+            p = p2026 if p2026.exists() else plegacy
             if not p.exists():
                 return self._send_json({'test_ids': [], 'note': 'no test split file'})
             try:
@@ -4446,9 +5841,17 @@ class GalleryHandler(BaseHTTPRequestHandler):
             name = path[len('/img/'):]
             if '..' in name or name.startswith('/'):
                 return self._send_404()
+            # Try the legacy disagree_images dir first (Grafana / K30 cached
+            # images live there), then fall back to data/borderlands/ for the
+            # local Borderlands import. Filenames are unique by construction
+            # (bl_<sha8>_<stem>.<ext>), so cross-source collisions don't happen.
             fpath = IMAGES_DIR / name
             if not fpath.exists() or not fpath.is_file():
-                return self._send_404()
+                bl = BASE_DIR / 'data' / 'borderlands' / name
+                if bl.exists() and bl.is_file():
+                    fpath = bl
+                else:
+                    return self._send_404()
             ext = fpath.suffix.lower()
             ctype = {'.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg',
                      '.jpeg': 'image/jpeg', '.gif': 'image/gif'}.get(ext, 'application/octet-stream')
@@ -4464,6 +5867,34 @@ class GalleryHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if path == '/api/marks':
+            length = int(self.headers.get('Content-Length') or 0)
+            try:
+                payload = json.loads(self.rfile.read(length).decode('utf-8') or '{}')
+            except Exception as e:
+                return self._send_json({'error': f'bad json: {e}'}, 400)
+            ids = payload.get('ids') or []
+            if not isinstance(ids, list):
+                return self._send_json({'error': 'ids must be a list'}, 400)
+            try:
+                n = save_marks_full(ids)
+                return self._send_json({'ok': True, 'count': n})
+            except Exception as e:
+                return self._send_json({'error': str(e)}, 500)
+        if path == '/api/category_marks':
+            length = int(self.headers.get('Content-Length') or 0)
+            try:
+                payload = json.loads(self.rfile.read(length).decode('utf-8') or '{}')
+            except Exception as e:
+                return self._send_json({'error': f'bad json: {e}'}, 400)
+            marks = payload.get('category_marks') or {}
+            if not isinstance(marks, dict):
+                return self._send_json({'error': 'category_marks must be an object'}, 400)
+            try:
+                n = save_category_marks_full(marks)
+                return self._send_json({'ok': True, 'count': n})
+            except Exception as e:
+                return self._send_json({'error': str(e)}, 500)
         if path == '/api/save_thr':
             length = int(self.headers.get('Content-Length') or 0)
             try:
