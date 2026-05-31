@@ -65,3 +65,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+commit_gallery.ps1
+gallery_commit_msg.txt

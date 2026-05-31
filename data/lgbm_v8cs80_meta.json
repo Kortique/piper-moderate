@@ -2,134 +2,134 @@
   "version": "v8cs80",
   "parent": "v8 (extended scope LS+Grafana+K30+hardneg\u00d720, BCI, slim80)",
   "split": "data/v11_test_split_2026.json",
-  "n_train": 7379,
-  "n_test": 1815,
+  "n_train": 7382,
+  "n_test": 1688,
   "multi_seed_full": {
     "auc": {
-      "mean": 0.9466370515833528,
-      "std": 0.00027450681296229215
+      "mean": 0.9394330385643762,
+      "std": 0.0006934286070324567
     },
     "child_recall": {
-      "mean": 0.9726027397260273,
-      "std": 0.002796221167560717
+      "mean": 0.9708141321044547,
+      "std": 0.0021723710635531317
     },
     "teen_recall": {
-      "mean": 0.8215962441314554,
-      "std": 0.0013279000585662848
+      "mean": 0.8289855072463768,
+      "std": 0.0023666567563122506
     },
     "adult_fpr": {
-      "mean": 0.1581050228310502,
-      "std": 0.001455199632874659
+      "mean": 0.16281823564239195,
+      "std": 0.005442503348386683
     },
     "per_seed": [
       {
         "seed": 1,
-        "auc": 0.9470110997014674,
-        "child_recall": 0.9691780821917808,
-        "teen_recall": 0.8225352112676056,
-        "adult_fpr": 0.1566780821917808,
+        "auc": 0.9391604457564016,
+        "child_recall": 0.967741935483871,
+        "teen_recall": 0.8260869565217391,
+        "adult_fpr": 0.1625222024866785,
         "counts": {
-          "n_child": 292,
-          "n_teen": 355,
-          "n_adult": 1168,
-          "blk_child": 283,
-          "blk_teen": 292,
+          "n_child": 217,
+          "n_teen": 345,
+          "n_adult": 1126,
+          "blk_child": 210,
+          "blk_teen": 285,
           "blk_adult": 183
         }
       },
       {
         "seed": 42,
-        "auc": 0.9463600442505982,
-        "child_recall": 0.9726027397260274,
-        "teen_recall": 0.819718309859155,
-        "adult_fpr": 0.1601027397260274,
+        "auc": 0.9403851380820845,
+        "child_recall": 0.9723502304147466,
+        "teen_recall": 0.8289855072463768,
+        "adult_fpr": 0.15630550621669628,
         "counts": {
-          "n_child": 292,
-          "n_teen": 355,
-          "n_adult": 1168,
-          "blk_child": 284,
-          "blk_teen": 291,
-          "blk_adult": 187
+          "n_child": 217,
+          "n_teen": 345,
+          "n_adult": 1126,
+          "blk_child": 211,
+          "blk_teen": 286,
+          "blk_adult": 176
         }
       },
       {
         "seed": 314,
-        "auc": 0.9465400107979929,
-        "child_recall": 0.976027397260274,
-        "teen_recall": 0.8225352112676056,
-        "adult_fpr": 0.15753424657534246,
+        "auc": 0.9387535318546425,
+        "child_recall": 0.9723502304147466,
+        "teen_recall": 0.8318840579710145,
+        "adult_fpr": 0.16962699822380106,
         "counts": {
-          "n_child": 292,
-          "n_teen": 355,
-          "n_adult": 1168,
-          "blk_child": 285,
-          "blk_teen": 292,
-          "blk_adult": 184
+          "n_child": 217,
+          "n_teen": 345,
+          "n_adult": 1126,
+          "blk_child": 211,
+          "blk_teen": 287,
+          "blk_adult": 191
         }
       }
     ]
   },
   "multi_seed_slim": {
     "auc": {
-      "mean": 0.9471809210758471,
-      "std": 0.0012022471635001826
+      "mean": 0.939818619115946,
+      "std": 0.0002835881434385902
     },
     "child_recall": {
-      "mean": 0.9680365296803654,
-      "std": 0.0016143990438049092
+      "mean": 0.9692780337941628,
+      "std": 0.0021723710635531317
     },
     "teen_recall": {
-      "mean": 0.8150234741784038,
-      "std": 0.004787811749852373
+      "mean": 0.8212560386473431,
+      "std": 0.006831949576681597
     },
     "adult_fpr": {
-      "mean": 0.16324200913242007,
-      "std": 0.0016143990438048964
+      "mean": 0.16193013617525165,
+      "std": 0.003426831528357087
     },
     "per_seed": [
       {
         "seed": 1,
-        "auc": 0.9487988556244839,
-        "child_recall": 0.9657534246575342,
-        "teen_recall": 0.819718309859155,
-        "adult_fpr": 0.16095890410958905,
+        "auc": 0.9398731376775409,
+        "child_recall": 0.967741935483871,
+        "teen_recall": 0.8115942028985508,
+        "adult_fpr": 0.16341030195381884,
         "counts": {
-          "n_child": 292,
-          "n_teen": 355,
-          "n_adult": 1168,
-          "blk_child": 282,
-          "blk_teen": 291,
-          "blk_adult": 188
+          "n_child": 217,
+          "n_teen": 345,
+          "n_adult": 1126,
+          "blk_child": 210,
+          "blk_teen": 280,
+          "blk_adult": 184
         }
       },
       {
         "seed": 42,
-        "auc": 0.9459193908661684,
-        "child_recall": 0.9691780821917808,
-        "teen_recall": 0.8084507042253521,
-        "adult_fpr": 0.1643835616438356,
+        "auc": 0.9394472607978357,
+        "child_recall": 0.967741935483871,
+        "teen_recall": 0.8260869565217391,
+        "adult_fpr": 0.15719360568383658,
         "counts": {
-          "n_child": 292,
-          "n_teen": 355,
-          "n_adult": 1168,
-          "blk_child": 283,
-          "blk_teen": 287,
-          "blk_adult": 192
+          "n_child": 217,
+          "n_teen": 345,
+          "n_adult": 1126,
+          "blk_child": 210,
+          "blk_teen": 285,
+          "blk_adult": 177
         }
       },
       {
         "seed": 314,
-        "auc": 0.9468245167368888,
-        "child_recall": 0.9691780821917808,
-        "teen_recall": 0.8169014084507042,
-        "adult_fpr": 0.1643835616438356,
+        "auc": 0.9401354588724614,
+        "child_recall": 0.9723502304147466,
+        "teen_recall": 0.8260869565217391,
+        "adult_fpr": 0.16518650088809947,
         "counts": {
-          "n_child": 292,
-          "n_teen": 355,
-          "n_adult": 1168,
-          "blk_child": 283,
-          "blk_teen": 290,
-          "blk_adult": 192
+          "n_child": 217,
+          "n_teen": 345,
+          "n_adult": 1126,
+          "blk_child": 211,
+          "blk_teen": 285,
+          "blk_adult": 186
         }
       }
     ]
@@ -137,51 +137,51 @@
   "by_source_slim": {
     "ls": {
       "n": 431,
-      "auc": 0.8902801941214175,
-      "child_recall": 0.9649122807017544,
+      "auc": 0.8804138815126821,
+      "child_recall": 0.9473684210526315,
       "teen_recall": 0.7075471698113207,
-      "adult_fpr": 0.21641791044776118,
+      "adult_fpr": 0.22388059701492538,
       "counts": {
         "n_child": 57,
         "n_teen": 106,
         "n_adult": 268,
-        "blk_child": 55,
+        "blk_child": 54,
         "blk_teen": 75,
-        "blk_adult": 58
+        "blk_adult": 60
       }
     },
     "k30": {
-      "n": 1215,
-      "auc": 0.965870030084494,
-      "child_recall": 0.9665071770334929,
-      "teen_recall": 0.8333333333333334,
-      "adult_fpr": 0.11916461916461916,
+      "n": 1099,
+      "auc": 0.960247039673167,
+      "child_recall": 0.9784172661870504,
+      "teen_recall": 0.8532608695652174,
+      "adult_fpr": 0.11984536082474227,
       "counts": {
-        "n_child": 209,
-        "n_teen": 192,
-        "n_adult": 814,
-        "blk_child": 202,
-        "blk_teen": 160,
-        "blk_adult": 97
+        "n_child": 139,
+        "n_teen": 184,
+        "n_adult": 776,
+        "blk_child": 136,
+        "blk_teen": 157,
+        "blk_adult": 93
       }
     },
     "grafana": {
-      "n": 169,
-      "auc": 0.9317736060521153,
+      "n": 158,
+      "auc": 0.9322849807445444,
       "child_recall": 1.0,
-      "teen_recall": 0.9649122807017544,
-      "adult_fpr": 0.43023255813953487,
+      "teen_recall": 0.9636363636363636,
+      "adult_fpr": 0.4024390243902439,
       "counts": {
-        "n_child": 26,
-        "n_teen": 57,
-        "n_adult": 86,
-        "blk_child": 26,
-        "blk_teen": 55,
-        "blk_adult": 37
+        "n_child": 21,
+        "n_teen": 55,
+        "n_adult": 82,
+        "blk_child": 21,
+        "blk_teen": 53,
+        "blk_adult": 33
       }
     }
   },
-  "n_features_full": 315,
+  "n_features_full": 316,
   "n_features_slim": 80,
-  "trained_at": "2026-05-26T15:19:49.612437"
+  "trained_at": "2026-05-28T15:38:23.242338"
 }
