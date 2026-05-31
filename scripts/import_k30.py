@@ -155,11 +155,35 @@ def main():
             0, None, now,
         )
         if ext_id in existing:
+            # IMPORTANT: --force re-imports data fields (qwen3 results, siglip, prompt,
+            # AI-suggested label etc.) but PRESERVES user state:
+            #   • deleted / deleted_at  — manual deletions stay deleted
+            #   • label_confirmed / labeled_at — human confirmations stay
+            #   • label — only overwritten when label_source != 'human' (AI label was placeholder)
+            #
+            # The previous version of this UPDATE clobbered all of those, wiping out
+            # hundreds of manual edits. Never again.
+            cur_row = conn.execute(
+                "SELECT label, label_source, label_confirmed, labeled_at, deleted, deleted_at FROM k30_pool WHERE id=?",
+                (ext_id,)
+            ).fetchone()
+            keep_label = (cur_row and cur_row['label_source'] == 'human') or bool(cur_row and cur_row['label_confirmed'])
+            new_label        = cur_row['label']        if keep_label else label
+            new_label_source = cur_row['label_source'] if keep_label else 'qwen3'
+            new_label_conf   = cur_row['label_confirmed']
+            new_labeled_at   = cur_row['labeled_at']
+            new_deleted      = cur_row['deleted'] or 0
+            new_deleted_at   = cur_row['deleted_at']
             conn.execute("""UPDATE k30_pool SET inner_id=?, thumb_url=?, local_path=?, prompt=?,
                             label=?, label_source=?, label_confirmed=?, labeled_at=?, variant=?,
                             piper_result=?, qwen3_result=?, siglip_result=?, extra=?, deleted=?,
                             deleted_at=?, imported_at=?  WHERE id=?""",
-                         row[1:] + (ext_id,))
+                         (row[1], row[2], row[3], row[4],
+                          new_label, new_label_source, new_label_conf, new_labeled_at,
+                          variant_for(new_label),
+                          row[10], row[11], row[12], row[13],
+                          new_deleted, new_deleted_at, row[16],
+                          ext_id))
             n_update += 1
         else:
             conn.execute("""INSERT INTO k30_pool (id, inner_id, thumb_url, local_path, prompt,

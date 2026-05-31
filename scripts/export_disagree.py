@@ -111,19 +111,75 @@ def grafana_query(sql: str) -> list[dict]:
     return [dict(zip(cols, row)) for row in rows]
 
 
+try:
+    import fcntl as _fcntl_mod
+except ImportError:
+    _fcntl_mod = None
+import signal as _signal_mod
+
+_POOL_LOCK_FILE = str(POOL_FILE) + ".lock"
+_pool_lock_fh = None
+
+def _try_lock_pool():
+    """Best-effort advisory lock so two writers can't race on POOL_FILE."""
+    global _pool_lock_fh
+    if _fcntl_mod is None:
+        return True
+    try:
+        _pool_lock_fh = open(_POOL_LOCK_FILE, "w")
+        _fcntl_mod.flock(_pool_lock_fh.fileno(), _fcntl_mod.LOCK_EX | _fcntl_mod.LOCK_NB)
+        _pool_lock_fh.write(str(os.getpid()))
+        _pool_lock_fh.flush()
+        return True
+    except (OSError, BlockingIOError):
+        return False
+
+
 def load_pool() -> dict:
     if POOL_FILE.exists():
-        raw = POOL_FILE.read_bytes().rstrip(b'\x00')
-        return json.loads(raw)
+        try:
+            raw = POOL_FILE.read_bytes().rstrip(b'\x00')
+            return json.loads(raw)
+        except Exception as e:
+            tmp = POOL_FILE.parent / (POOL_FILE.name + ".tmp")
+            if tmp.exists():
+                try:
+                    console.print(f"[yellow]WARN: pool corrupt ({e}); falling back to .tmp[/yellow]")
+                    return json.loads(tmp.read_bytes().rstrip(b'\x00'))
+                except Exception:
+                    pass
+            raise
     return {}
 
 
 def save_pool(pool: dict):
+    """Atomic + signal-safe pool write."""
     POOL_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = str(POOL_FILE) + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(pool, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, POOL_FILE)
+    try:
+        old_term = _signal_mod.signal(_signal_mod.SIGTERM, _signal_mod.SIG_IGN)
+    except Exception:
+        old_term = None
+    try:
+        old_int = _signal_mod.signal(_signal_mod.SIGINT, _signal_mod.SIG_IGN)
+    except Exception:
+        old_int = None
+    try:
+        tmp = str(POOL_FILE) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(pool, f, indent=2, ensure_ascii=False)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except (OSError, AttributeError):
+                pass
+        os.replace(tmp, POOL_FILE)
+    finally:
+        if old_term is not None:
+            try: _signal_mod.signal(_signal_mod.SIGTERM, old_term)
+            except Exception: pass
+        if old_int is not None:
+            try: _signal_mod.signal(_signal_mod.SIGINT, old_int)
+            except Exception: pass
 
 
 def download_image(gen_id: str, url: str) -> tuple[str, str | None]:
