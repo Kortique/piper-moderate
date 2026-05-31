@@ -67,18 +67,44 @@ if (Has-Staged) {
 git add scripts/ 2>&1 | Out-Null
 if (Has-Staged) {
     $smsg = @'
-feat(scripts): rescore + holdout retrain + K30 import utilities
+feat(scripts): borderlands batch + rescore hardening + diagnostics
 
-- scripts/rescore_via_v11.py  - score LS+Grafana via V11 pipeline ce79f7e299
-  with retry/backoff on 5xx and timeouts, no_face handling
-- scripts/rescore_k30_v6v8.py - fill 180-tag K30 input via d2911d10bb
-- scripts/rescore_via_tom.py  - score via Tom pipeline a4aa9dbd9c
-- scripts/rescore_k30_v9.py   - earlier K30 rescore variant
-- scripts/import_k30.py       - import Tom K=30 dataset into gallery.db
-- scripts/run_category.py     - category-scoped runner
+Borderlands ingestion
+- scripts/import_borderlands.py   - import ~9.8k local images into gallery.db
+- scripts/moderate_borderlands.py - run d2911d10bb pipeline on local data URIs;
+  PIL JPEG normalisation (768px, <3.5MB), permanent-error sentinels for HTTP
+  400/413 and libvips decode failures, no_face as a soft success; modes:
+  --missing-qwen3 (qwen3-only recovery), --redo-no-face (re-run old sentinels),
+  --missing-scores (siglip2-only fill of V6/V8/V11 gaps with providers_e0);
+  polling now waits for the providers that were actually requested
+  (siglip2_details OR siglip2_labels as the siglip2-done signal)
+
+Rescore hardening (V11 native + Tom K30)
+- rescore_via_v11.py / rescore_via_tom.py: _atomic_write with explicit
+  encoding=utf-8 + fsync; Windows cp1251 default was silently mangling
+  cyrillic IDs (e.g. bl_..._эротические_) and corrupting whole JSON caches
+- resume now reads raw bytes + errors=ignore fallback so a few corrupt bytes
+  don't force a full 25k-record re-score
+- Tom resume only treats done=True records as already-scored (was skipping
+  prior-error items by mistake)
+- providers_e0 enum validation up-front; counter shows 1..len(todo)
+
+Diagnostics + recovery utilities
+- scripts/recover_json_caches.py    - atomic UTF-8 rewrite of v11/tom caches
+  with timestamped .broken backups, dry-run mode
+- scripts/check_piper_pipeline.py   - dump pipeline.inputs/prepare_params,
+  recommend providers key per project (providers vs providers_e0)
+- scripts/check_borderlands_scores.py - per-model gap coverage report
+- scripts/check_shadow.py, diag_labels.py, install_label_guard.py,
+  snapshot.py, rollback.py - label-safety + audit trail utilities
+
+LS batch ingestion + V6/V8/V11 holdout retrain
+- scripts/fetch_ls_batch.py, import_ls_batch.py, moderate_ls_batch.py
+  - end-to-end LS view 65 pull → DB → siglip2
 - scripts/train_v6b_holdout.py / train_v8b_holdout.py / train_v11b_holdout.py
-  - retrain V6/V8/V11 with shared 80/20 holdout (v11_test_split.json),
-    multi-seed lgb, per-source AUC breakdown
+  - shared 80/20 holdout (v11_test_split.json), multi-seed, per-source AUC
+- scripts/retrain_v6_v8_v11.py, reprocess_session.py, reset_session_grafana.py,
+  report_new_grafana.py, deploy_piper_lgbm.py, relabel_pool.py - operations
 '@
     git commit -m $smsg
     Write-Host "Committed: scripts/" -ForegroundColor Green
@@ -118,43 +144,58 @@ if (Has-Staged) {
 git add gallery_server.py 2>&1 | Out-Null
 if (Has-Staged) {
     $gmsg = @'
-feat(gallery): lightbox moderation mode + marked items workflow
+feat(gallery): borderlands source + colored borders + lightbox moderation
 
-Lightbox
-- Sidebar layout: image left, info column right (overlay fallback on narrow viewports)
-- Verdict badge: UNDERAGE / OK / UNKNOWN (effective label first, then majority model vote)
-- Per-model LGBM scores with color grading by their own thresholds
-- Age rows: qwen3, face_detect, LS source range
-- Disagreement row with low/mid/hi color grading
-- Marked toggle row in sidebar
-- Thumbnails strip with auto-centering on current item (cubic-bezier transition)
-- Position counter "N / TOTAL" + hint bar
+Borderlands as a first-class source
+- borderlands_pool wired into load_eval_data: V6/V8/V11 inline scoring on
+  piper_result.siglip2_details (same shape as grafana); V11 native pulled
+  from data/v11_native_scores.json with siglip2-based fallback (* marker)
+- load_borderlands returns qwen3_description as prompt slot
+- borderlands in source dropdown, exclude-sessions panel groups,
+  _exclKeyFor → borderlands:all
+- Broken-image handler replaces only <img>, keeps action buttons clickable
+  (x, star, src-badge)
 
-Moderation hotkeys
-- 1/2/3 = child/teen/adult, 4 = delete, 5/m = mark, Enter = next
-- Auto-advance after labelling and deletion (120ms flash delay)
-- Mouse wheel paging (180ms throttle)
+Drop empty-labels guards on V8/V11 scoring (10 sites)
+- Was: "if not u and not a: continue" skipped LGBM whenever siglip2 found
+  zero underage AND zero adult tags, leaving ~163 clean-image cards without
+  V6/V8/V11 scores even though piper_result.siglip2_details was populated
+- Now: LGBM runs on a 0-vector and returns the baseline (~0.05) — correct
+  prediction for completely clean adult content, matches Piper-side LGBM
+  Underage that already produced lgbm.score in the same shape
+
+Colored frame by label (card + lightbox)
+- child=red, teen=orange, adult=green; lightbox uses ::after layer with
+  z-index 4 + pointer-events:none so the image cannot occlude the border
+- !important on card .lbl-X / lightbox #lb-wrap::after
+
+Exclude-sessions reach AUC + stats
+- _sourceMatch() honours excludedSessions when source='all'
+- Exclude checkbox handler triggers computeAucForVersion, updateLgbmStats,
+  refreshAucDisplays so toolbar numbers stay in sync with visible cards
+
+Lightbox moderation
+- Sidebar layout, verdict badge (UNDERAGE / OK / UNKNOWN), per-model
+  color-graded scores, age rows, disagreement row, marked toggle,
+  thumbnail strip with auto-centering, position counter and hint bar
+- Hotkeys: 1/2/3 = child/teen/adult, 4 = delete, 5/m = mark, Enter = next;
+  auto-advance after labelling (120ms), mouse-wheel paging (180ms throttle)
 
 Marked items workflow
-- Global Set persisted to localStorage across sessions
-- Star button top-center of card; click or hotkey toggles
-- Full-perimeter golden outline on marked cards (outline, not clipped inset shadow)
-- New "marked" option in source filter
-- JSON export: marked_YYYYMMDDHHMMSS.json with id, source, label, ages, model scores
+- localStorage-persisted Set, star button top-center, golden outline
+  (outline, not clipped inset shadow), source dropdown "marked" option,
+  JSON export marked_YYYYMMDDHHMMSS.json
 
-Card UX
-- Viewed-in-lightbox eye badge bottom-center of preview
-- Deletion mark synced between lightbox and gallery card
-
-Workflow fixes
-- "Confirm page" auto-saves in one click (was two clicks)
-- Save preserves current page (previously reset to page 1)
-- Page-size select auto-refreshes on change
-- V11 native scores wired as primary source (data/v11_native_scores.json), no_face skipped without crashing
-- K30 (Tom) count in header stats line
-- /api/save_thr handler fixed (orphan except after mount-write truncation)
-- Auto-confirm pass on save for grafana/k30 items touched or viewed
-- Local label_confirmed flip after save (counter drops to 0 without reload)
+Card + workflow fixes
+- Badge in LGBM mode uses local gallery score, not Piper
+- TP/FP/TN/FN computed from live slider threshold
+- Viewed-in-lightbox eye badge bottom-center
+- "Confirm page" auto-saves in one click; save preserves current page
+- Page-size auto-refresh; V11 native primary, no_face skipped safely
+- K30 (Tom) count in header stats; /api/save_thr handler restored
+- LS session dropdown (formatted like Grafana, working filter)
+- V8 scoring for new LS batch reads siglip2_details from DB
+- V11 LS fallback uses DB siglip2_details for no_face/missing-rescore items
 '@
     git commit -m $gmsg
     Write-Host "Committed: gallery_server.py" -ForegroundColor Green
